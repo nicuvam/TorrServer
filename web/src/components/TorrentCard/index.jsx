@@ -13,6 +13,7 @@ import { playlistTorrHost, streamHost, torrentsHost } from 'utils/Hosts'
 import { NoImageIcon } from 'icons'
 import DialogTorrentDetailsContent from 'components/DialogTorrentDetailsContent'
 import { getMoviePosters, shortenTitleForPosterSearch } from 'components/Add/helpers'
+import useChangeLanguage from 'utils/useChangeLanguage'
 import Dialog from '@material-ui/core/Dialog'
 import Slide from '@material-ui/core/Slide'
 import {
@@ -164,7 +165,8 @@ const sameFileList = (left, right) => {
 const posterLookupDone = new Set()
 
 const Torrent = ({ torrent }) => {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
+  const [currentLang] = useChangeLanguage()
   const [isDetailedInfoOpened, setIsDetailedInfoOpened] = useState(false)
   const [isDeleteTorrentOpened, setIsDeleteTorrentOpened] = useState(false)
   const [unsupportedPlayers, setUnsupportedPlayers] = useState({})
@@ -233,13 +235,13 @@ const Torrent = ({ torrent }) => {
     const query = shortenTitleForPosterSearch(title || name)
     if (!query) return
     posterLookupDone.add(hash)
-    const language = i18n.language === 'ru' ? 'ru' : 'en'
+    const language = currentLang === 'ru' ? 'ru' : 'en'
     getMoviePosters(query, language).then(urls => {
       if (urls?.[0]) {
         axios.post(torrentsHost(), { action: 'set', hash, title, poster: urls[0], category, data })
       }
     })
-  }, [poster, qbitState, hash, title, name, category, data, i18n.language])
+  }, [poster, qbitState, hash, title, name, category, data, currentLang])
 
   const qbitProgressLabel = () => {
     if ((qbitProgress || 0) >= 1) return '100%'

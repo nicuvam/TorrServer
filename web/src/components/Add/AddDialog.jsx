@@ -39,7 +39,7 @@ export default function AddDialog({
   const { t } = useTranslation()
   const isEditMode = !!originalHash
   const [torrentSource, setTorrentSource] = useState(originalHash || '')
-  const [title, setTitle] = useState(originalTitle || '')
+  const [title, setTitle] = useState(originalTitle && originalTitle !== originalName ? originalTitle : '')
   const [category, setCategory] = useState(originalCategory || '')
   const [originalTorrentTitle, setOriginalTorrentTitle] = useState('')
   const [parsedTitle, setParsedTitle] = useState('')
