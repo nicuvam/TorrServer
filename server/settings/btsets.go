@@ -270,9 +270,6 @@ func loadBTSets() {
 					ImageURLRu: "https://imagetmdb.com",
 				}
 			}
-			if BTsets.TMDBSettings.APIKey == "" {
-				BTsets.TMDBSettings.APIKey = DefaultTMDBAPIKey
-			}
 			// Default Bonjour on for configs that predate the setting.
 			var raw map[string]json.RawMessage
 			if json.Unmarshal(buf, &raw) == nil {
