@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"server/rutor"
 	"server/settings"
@@ -21,18 +22,10 @@ func resolveMeta(hashHex, rawName string) (string, string) {
 		title = found.Title
 		imdb = found.IMDBID
 	}
-
-	tmdbTitle, poster := lookupTMDB(imdb, searchName(rawName))
-	if title == "" && tmdbTitle != "" {
-		title = tmdbTitle
-		if season := seasonTag(rawName); season != "" {
-			title += " " + season
-		}
-	}
 	if title == "" {
 		title = prettyName(rawName)
 	}
-	return title, poster
+	return title, lookupPoster(imdb, posterQuery(rawName))
 }
 
 func prettyName(name string) string {
@@ -45,11 +38,9 @@ func prettyName(name string) string {
 
 var releaseTagRe = regexp.MustCompile(`(?i)^((19|20)\d{2}|s\d{1,2}(e\d{1,3})?|2160p|1080p|720p|480p|4k|uhd|web|webrip|web-dl|webdl|bluray|bdrip|bdremux|remux|hdtv|dvdrip|hdr|hdr10|dv|sdr|atvp|amzn|nf|dsnp|hmax|[hx]\.?26[45]|hevc|avc|aac|ddp?\d?)$`)
 
-var seasonTagRe = regexp.MustCompile(`(?i)\bS\d{1,2}(-S?\d{1,2})?\b`)
-
-func searchName(rawName string) string {
+func releaseTitle(base string) string {
 	var words []string
-	for _, word := range strings.Fields(prettyName(rawName)) {
+	for _, word := range strings.Fields(prettyName(base)) {
 		if releaseTagRe.MatchString(word) {
 			break
 		}
@@ -58,21 +49,50 @@ func searchName(rawName string) string {
 	return strings.Join(words, " ")
 }
 
-func seasonTag(rawName string) string {
-	return strings.ToUpper(seasonTagRe.FindString(prettyName(rawName)))
+const (
+	posterSearchMaxLen   = 50
+	posterSearchMaxWords = 4
+)
+
+func posterQuery(fullTitle string) string {
+	base := strings.TrimSpace(fullTitle)
+	if base == "" {
+		return ""
+	}
+	for _, sep := range []string{" [", " (", " / "} {
+		if i := strings.Index(base, sep); i > 0 {
+			base = strings.TrimSpace(base[:i])
+		}
+	}
+	if parsed := releaseTitle(base); parsed != "" {
+		base = parsed
+	}
+	words := strings.Fields(base)
+	if len(words) > posterSearchMaxWords {
+		words = words[:posterSearchMaxWords]
+	}
+	byWords := strings.Join(words, " ")
+	if len(byWords) <= posterSearchMaxLen {
+		return byWords
+	}
+	cut := byWords[:posterSearchMaxLen]
+	if lastSpace := strings.LastIndex(cut, " "); lastSpace > 0 {
+		cut = cut[:lastSpace]
+	}
+	return strings.TrimSpace(cut)
+}
+
+func queryLanguage(query string) string {
+	for _, r := range query {
+		if unicode.Is(unicode.Cyrillic, r) {
+			return "ru"
+		}
+	}
+	return "en"
 }
 
 type tmdbResult struct {
-	Name       string `json:"name"`
-	Title      string `json:"title"`
 	PosterPath string `json:"poster_path"`
-}
-
-func (r tmdbResult) displayTitle() string {
-	if r.Name != "" {
-		return r.Name
-	}
-	return r.Title
 }
 
 type tmdbResponse struct {
@@ -81,59 +101,73 @@ type tmdbResponse struct {
 	TvResults    []tmdbResult `json:"tv_results"`
 }
 
-func tmdbAPIURL(raw string) string {
-	base := strings.TrimRight(strings.TrimSpace(raw), "/")
-	base = strings.TrimSuffix(base, "/3")
-	if base == "" {
-		return "https://api.themoviedb.org"
+func normalizeHost(raw, fallback string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if trimmed == "" {
+		trimmed = fallback
 	}
-	return base
+	if !strings.HasPrefix(trimmed, "http://") && !strings.HasPrefix(trimmed, "https://") {
+		trimmed = "https://" + strings.TrimPrefix(trimmed, "//")
+	}
+	return trimmed
 }
 
-func lookupTMDB(imdbID, query string) (string, string) {
+func tmdbAPIURL(raw string) string {
+	return strings.TrimSuffix(normalizeHost(raw, "https://api.themoviedb.org"), "/3")
+}
+
+func lookupPoster(imdbID, query string) string {
 	if settings.BTsets == nil {
-		return "", ""
+		return ""
 	}
 	cfg := settings.BTsets.TMDBSettings
 	if cfg.APIKey == "" {
-		return "", ""
+		return ""
 	}
 	apiURL := tmdbAPIURL(cfg.APIURL)
+	language := queryLanguage(query)
+
+	params := url.Values{}
+	params.Set("api_key", cfg.APIKey)
+	params.Set("language", language)
+	params.Set("include_image_language", language+",null,en")
 
 	var reqURL string
 	switch {
 	case imdbID != "":
-		reqURL = apiURL + "/3/find/" + url.PathEscape(imdbID) + "?api_key=" + url.QueryEscape(cfg.APIKey) + "&external_source=imdb_id"
+		params.Set("external_source", "imdb_id")
+		reqURL = apiURL + "/3/find/" + url.PathEscape(imdbID) + "?" + params.Encode()
 	case query != "":
-		reqURL = apiURL + "/3/search/multi?api_key=" + url.QueryEscape(cfg.APIKey) + "&query=" + url.QueryEscape(query)
+		params.Set("query", query)
+		reqURL = apiURL + "/3/search/multi?" + params.Encode()
 	default:
-		return "", ""
+		return ""
 	}
 
 	resp, err := metaHTTP.Get(reqURL)
 	if err != nil {
-		return "", ""
+		return ""
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", ""
+		return ""
 	}
 
 	var parsed tmdbResponse
 	if json.NewDecoder(resp.Body).Decode(&parsed) != nil {
-		return "", ""
+		return ""
 	}
 
-	imageURL := strings.TrimRight(cfg.ImageURL, "/")
-	if imageURL == "" {
-		imageURL = "https://image.tmdb.org"
+	imgHost := normalizeHost(cfg.ImageURL, "https://image.tmdb.org")
+	if language == "ru" {
+		imgHost = normalizeHost(cfg.ImageURLRu, "https://imagetmdb.com")
 	}
 	for _, group := range [][]tmdbResult{parsed.TvResults, parsed.MovieResults, parsed.Results} {
 		for _, result := range group {
 			if result.PosterPath != "" {
-				return result.displayTitle(), imageURL + "/t/p/w300" + result.PosterPath
+				return imgHost + "/t/p/w300" + result.PosterPath
 			}
 		}
 	}
-	return "", ""
+	return ""
 }
