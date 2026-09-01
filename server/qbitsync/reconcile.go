@@ -149,11 +149,9 @@ func (s *service) importTorrent(client clientAPI, hash string, info qbit.Torrent
 		return err
 	}
 
-	title, poster := resolveMeta(hash, record.Title)
-	if title != "" {
+	if title := resolveTitle(hash, record.Title); title != "" {
 		record.Title = title
 	}
-	record.Poster = poster
 
 	saveTorrentDB(record)
 	return nil
