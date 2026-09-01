@@ -132,6 +132,8 @@ func (v *BTSets) String() string {
 	return string(buf)
 }
 
+const DefaultTMDBAPIKey = "45ddf563ac3fb845f2d5c363190d1a33"
+
 // Default remote trackers list and built-in announce URLs (also used by Web UI defaults).
 const DefaultTrackersListURL = "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best_ip.txt"
 
@@ -235,7 +237,7 @@ func SetDefaultConfig() {
 	}
 	// Set default TMDB settings
 	sets.TMDBSettings = TMDBConfig{
-		APIKey:     "",
+		APIKey:     DefaultTMDBAPIKey,
 		APIURL:     "https://api.themoviedb.org",
 		ImageURL:   "https://image.tmdb.org",
 		ImageURLRu: "https://imagetmdb.com",
@@ -262,11 +264,14 @@ func loadBTSets() {
 			// Set default TMDB settings if missing (for existing configs)
 			if BTsets.TMDBSettings.APIURL == "" {
 				BTsets.TMDBSettings = TMDBConfig{
-					APIKey:     "",
+					APIKey:     DefaultTMDBAPIKey,
 					APIURL:     "https://api.themoviedb.org",
 					ImageURL:   "https://image.tmdb.org",
 					ImageURLRu: "https://imagetmdb.com",
 				}
+			}
+			if BTsets.TMDBSettings.APIKey == "" {
+				BTsets.TMDBSettings.APIKey = DefaultTMDBAPIKey
 			}
 			// Default Bonjour on for configs that predate the setting.
 			var raw map[string]json.RawMessage

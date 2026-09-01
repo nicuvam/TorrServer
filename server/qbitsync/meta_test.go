@@ -40,13 +40,13 @@ func TestLookupPoster(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/3/find/tt1234567":
-			w.Write([]byte(`{"tv_results":[{"poster_path":"/tv.jpg"}]}`))
+			w.Write([]byte(`{"tv_results":[{"name":"Тед Лассо","poster_path":"/tv.jpg"}]}`))
 		case "/3/search/multi":
 			if r.URL.Query().Get("query") != "Ted Lasso" {
 				w.Write([]byte(`{"results":[]}`))
 				return
 			}
-			w.Write([]byte(`{"results":[{"poster_path":"/multi.jpg"}]}`))
+			w.Write([]byte(`{"results":[{"title":"Ted Lasso","poster_path":"/multi.jpg"}]}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -60,17 +60,44 @@ func TestLookupPoster(t *testing.T) {
 		APIURL: srv.URL,
 	}}
 
-	if got := lookupPoster("tt1234567", ""); got != "https://image.tmdb.org/t/p/w300/tv.jpg" {
-		t.Fatalf("find lookup = %q", got)
+	if title, poster := lookupTMDB("tt1234567", ""); title != "Тед Лассо" || poster != "https://image.tmdb.org/t/p/w300/tv.jpg" {
+		t.Fatalf("find lookup = %q %q", title, poster)
 	}
-	if got := lookupPoster("", "Ted Lasso"); got != "https://image.tmdb.org/t/p/w300/multi.jpg" {
-		t.Fatalf("search lookup = %q", got)
+	if title, poster := lookupTMDB("", "Ted Lasso"); title != "Ted Lasso" || poster != "https://image.tmdb.org/t/p/w300/multi.jpg" {
+		t.Fatalf("search lookup = %q %q", title, poster)
 	}
-	if got := lookupPoster("", "Unknown Thing"); got != "" {
-		t.Fatalf("miss lookup = %q", got)
+	if _, poster := lookupTMDB("", "Unknown Thing"); poster != "" {
+		t.Fatalf("miss lookup = %q", poster)
 	}
 	settings.BTsets.TMDBSettings.APIKey = ""
-	if got := lookupPoster("tt1234567", "Ted Lasso"); got != "" {
-		t.Fatalf("no key lookup = %q", got)
+	if _, poster := lookupTMDB("tt1234567", "Ted Lasso"); poster != "" {
+		t.Fatalf("no key lookup = %q", poster)
+	}
+}
+
+func TestSeasonTag(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"Ted.Lasso.S04.2160p", "S04"},
+		{"Show.S01-S03.1080p", "S01-S03"},
+		{"The.Matrix.1999.1080p", ""},
+	}
+	for _, test := range tests {
+		if got := seasonTag(test.in); got != test.want {
+			t.Fatalf("seasonTag(%q) = %q, want %q", test.in, got, test.want)
+		}
+	}
+}
+
+func TestTmdbAPIURL(t *testing.T) {
+	tests := []struct{ in, want string }{
+		{"", "https://api.themoviedb.org"},
+		{"https://api.themoviedb.org", "https://api.themoviedb.org"},
+		{"https://api.themoviedb.org/3", "https://api.themoviedb.org"},
+		{"https://proxy.example.com/3/", "https://proxy.example.com"},
+	}
+	for _, test := range tests {
+		if got := tmdbAPIURL(test.in); got != test.want {
+			t.Fatalf("tmdbAPIURL(%q) = %q, want %q", test.in, got, test.want)
+		}
 	}
 }
