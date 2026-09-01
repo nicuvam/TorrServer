@@ -41,10 +41,10 @@ var (
 	newClient = func(baseURL, username, password string) clientAPI {
 		return qbit.New(baseURL, username, password)
 	}
-	listRecords   = torrentRecords
-	setLocalPath  = torr.SetLocalPath
-	dropTorrent   = torr.DropTorrent
-	saveTorrentDB = settings.AddTorrent
+	listRecords  = torrentRecords
+	setLocalPath = torr.SetLocalPath
+	dropTorrent  = torr.DropTorrent
+	importViaAdd = importTorrentViaAdd
 )
 
 type retryState struct {

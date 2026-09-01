@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
 
@@ -160,7 +161,12 @@ type testEnv struct {
 	records  []torrentRecord
 	local    map[string]string
 	dropped  []string
-	imported []*settings.TorrentDB
+	imported []importedAdd
+}
+
+type importedAdd struct {
+	spec     *torrent.TorrentSpec
+	category string
 }
 
 func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
@@ -172,7 +178,7 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 	previousList := listRecords
 	previousLocal := setLocalPath
 	previousDrop := dropTorrent
-	previousSave := saveTorrentDB
+	previousImport := importViaAdd
 	t.Cleanup(func() {
 		settings.BTsets = previousSets
 		nowFunc = previousNow
@@ -180,7 +186,7 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 		listRecords = previousList
 		setLocalPath = previousLocal
 		dropTorrent = previousDrop
-		saveTorrentDB = previousSave
+		importViaAdd = previousImport
 	})
 
 	env := &testEnv{
@@ -199,7 +205,10 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 		return nil
 	}
 	dropTorrent = func(hash string) { env.dropped = append(env.dropped, hash) }
-	saveTorrentDB = func(record *settings.TorrentDB) { env.imported = append(env.imported, record) }
+	importViaAdd = func(spec *torrent.TorrentSpec, category string) error {
+		env.imported = append(env.imported, importedAdd{spec: spec, category: category})
+		return nil
+	}
 
 	return env
 }
@@ -380,18 +389,15 @@ func TestAutoImportSkipsKnownAndUncategorized(t *testing.T) {
 	if len(env.imported) != 1 {
 		t.Fatalf("imported %d torrents, want 1", len(env.imported))
 	}
-	record := env.imported[0]
-	if record.InfoHash.HexString() != newHash {
-		t.Fatalf("imported hash = %s, want %s", record.InfoHash.HexString(), newHash)
+	added := env.imported[0]
+	if added.spec.InfoHash.HexString() != newHash {
+		t.Fatalf("imported hash = %s, want %s", added.spec.InfoHash.HexString(), newHash)
 	}
-	if record.Category != "tv" || record.Title != "imported" {
-		t.Fatalf("imported record = %+v", record)
+	if added.category != "tv" {
+		t.Fatalf("imported category = %q, want tv", added.category)
 	}
-	if len(record.InfoBytes) == 0 || record.Storage != nil {
-		t.Fatalf("imported spec not sanitized: infoBytes=%d storage=%v", len(record.InfoBytes), record.Storage)
-	}
-	if record.Size != info.TotalLength() || record.Timestamp != env.clock.Now().Unix() {
-		t.Fatalf("imported size/timestamp = %d/%d", record.Size, record.Timestamp)
+	if len(added.spec.InfoBytes) == 0 || added.spec.DisplayName != "imported" {
+		t.Fatalf("imported spec = infoBytes:%d dn:%q", len(added.spec.InfoBytes), added.spec.DisplayName)
 	}
 
 	env.records = append(env.records, torrentRecord{Hash: newHash})

@@ -11,6 +11,7 @@ import (
 
 	"server/qbit"
 	"server/settings"
+	"server/torr"
 )
 
 const (
@@ -123,56 +124,57 @@ func (s *service) runImport(client clientAPI, records []torrentRecord, snapshot 
 }
 
 func (s *service) importTorrent(client clientAPI, hash string, info qbit.TorrentInfo, category string) error {
-	record := &settings.TorrentDB{
-		Title:     info.Name,
-		Category:  category,
-		Timestamp: nowFunc().Unix(),
-		Size:      info.Size,
+	spec, err := importSpec(client, hash, info)
+	if err != nil {
+		return err
 	}
+	return importViaAdd(spec, category)
+}
 
+func importSpec(client clientAPI, hash string, info qbit.TorrentInfo) (*torrent.TorrentSpec, error) {
 	data, err := client.Export(hash)
 	switch {
 	case err == nil:
-		spec, meta, parseErr := specFromTorrentFile(data)
-		if parseErr != nil {
-			return parseErr
-		}
-		record.TorrentSpec = spec
-		record.Title = meta.Name
-		record.Size = meta.TotalLength()
+		return specFromTorrentFile(data)
 	case errors.Is(err, qbit.ErrNotFound):
-		record.TorrentSpec = &torrent.TorrentSpec{
+		return &torrent.TorrentSpec{
 			InfoHash:    metainfo.NewHashFromHex(hash),
 			DisplayName: info.Name,
-		}
+		}, nil
 	default:
+		return nil, err
+	}
+}
+
+func importTorrentViaAdd(spec *torrent.TorrentSpec, category string) error {
+	tor, err := torr.AddTorrent(spec, "", "", "", category, "")
+	if err != nil {
 		return err
 	}
-
-	if title := resolveTitle(hash, record.Title); title != "" {
-		record.Title = title
+	if !tor.GotInfo() {
+		return errors.New("timeout getting torrent info")
 	}
-
-	saveTorrentDB(record)
+	torr.ApplyDefaultTitle(tor)
+	torr.SaveTorrentToDB(tor)
+	tor.Drop()
 	return nil
 }
 
-func specFromTorrentFile(data []byte) (*torrent.TorrentSpec, *metainfo.Info, error) {
+func specFromTorrentFile(data []byte) (*torrent.TorrentSpec, error) {
 	mi, err := metainfo.Load(bytes.NewReader(data))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	meta, err := mi.UnmarshalInfo()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	magnet := mi.Magnet(nil, &meta)
-	spec := &torrent.TorrentSpec{
+	return &torrent.TorrentSpec{
 		InfoBytes:   mi.InfoBytes,
 		Trackers:    [][]string{magnet.Trackers},
 		DisplayName: meta.Name,
 		InfoHash:    mi.HashInfoBytes(),
-	}
-	return spec, &meta, nil
+	}, nil
 }

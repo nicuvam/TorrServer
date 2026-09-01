@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/anacrolix/torrent"
@@ -158,6 +159,20 @@ func SetTorrent(hashHex, title, poster, category string, data string) *Torrent {
 	} else {
 		return torrDb
 	}
+}
+
+func ApplyDefaultTitle(torr *Torrent) {
+	if torr.Title != "" || torr.TorrentSpec == nil {
+		return
+	}
+	title := torr.TorrentSpec.DisplayName
+	title = strings.ReplaceAll(title, "rutor.info", "")
+	title = strings.ReplaceAll(title, "_", " ")
+	title = strings.Trim(title, " ")
+	if title == "" && torr.Torrent != nil {
+		title = torr.Name()
+	}
+	torr.Title = title
 }
 
 func SetLocalPath(hashHex string, path string) error {

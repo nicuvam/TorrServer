@@ -161,15 +161,7 @@ func addTorrent(req torrReqJS, c *gin.Context) {
 			return
 		}
 
-		if tor.Title == "" {
-			tor.Title = torrSpec.DisplayName // prefer dn over name
-			tor.Title = strings.ReplaceAll(tor.Title, "rutor.info", "")
-			tor.Title = strings.ReplaceAll(tor.Title, "_", " ")
-			tor.Title = strings.Trim(tor.Title, " ")
-			if tor.Title == "" {
-				tor.Title = tor.Name()
-			}
-		}
+		torr.ApplyDefaultTitle(tor)
 
 		if saveToDB {
 			torr.SaveTorrentToDB(tor)
