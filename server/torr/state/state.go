@@ -35,6 +35,13 @@ type TorrentStatus struct {
 	Category            string      `json:"category"`
 	Poster              string      `json:"poster"`
 	Data                string      `json:"data,omitempty"`
+	LocalPath           string      `json:"local_path,omitempty"`
+	QBitState           string      `json:"qbit_state,omitempty"`
+	QBitProgress        float64     `json:"qbit_progress,omitempty"`
+	QBitDlSpeed         int64       `json:"qbit_dlspeed,omitempty"`
+	QBitEta             int64       `json:"qbit_eta,omitempty"`
+	QBitCompletedOn     int64       `json:"qbit_completed_on,omitempty"`
+	QBitError           string      `json:"qbit_error,omitempty"`
 	Timestamp           int64       `json:"timestamp"`
 	Name                string      `json:"name,omitempty"`
 	Hash                string      `json:"hash,omitempty"`

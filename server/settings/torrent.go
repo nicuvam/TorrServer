@@ -12,10 +12,11 @@ import (
 type TorrentDB struct {
 	*torrent.TorrentSpec
 
-	Title    string `json:"title,omitempty"`
-	Category string `json:"category,omitempty"`
-	Poster   string `json:"poster,omitempty"`
-	Data     string `json:"data,omitempty"`
+	Title     string `json:"title,omitempty"`
+	Category  string `json:"category,omitempty"`
+	Poster    string `json:"poster,omitempty"`
+	Data      string `json:"data,omitempty"`
+	LocalPath string `json:"local_path,omitempty"`
 
 	Timestamp int64 `json:"timestamp,omitempty"`
 	Size      int64 `json:"size,omitempty"`

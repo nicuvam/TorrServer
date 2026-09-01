@@ -6,7 +6,6 @@ import (
 
 	sets "server/settings"
 	"server/torr"
-	"server/torr/storage/torrstor"
 
 	"github.com/anacrolix/torrent"
 )
@@ -18,12 +17,12 @@ type TorrFile struct {
 
 	torr   *torr.Torrent
 	file   *torrent.File
-	reader *torrstor.Reader
+	reader torr.Reader
 }
 
 type TorrFileHandle struct {
 	*TorrFile
-	r *torrstor.Reader
+	r torr.Reader
 }
 
 func NewTorrFile(parent INode, name string, file *torrent.File) *TorrFile {

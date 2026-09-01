@@ -18,6 +18,11 @@ import (
 )
 
 func (t *Torrent) Preload(index int, size int64) {
+	if t.isLocal() {
+		t.PreloadSize = 0
+		t.PreloadedBytes = 0
+		return
+	}
 	if size <= 0 {
 		return
 	}

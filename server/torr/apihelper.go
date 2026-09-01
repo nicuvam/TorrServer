@@ -1,6 +1,7 @@
 package torr
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -25,7 +26,7 @@ func LoadTorrent(tor *Torrent) *Torrent {
 	if tor.TorrentSpec == nil {
 		return nil
 	}
-	tr, err := NewTorrent(tor.TorrentSpec, bts)
+	tr, err := NewTorrent(tor.TorrentSpec, bts, tor.LocalPath)
 	if err != nil {
 		return nil
 	}
@@ -38,8 +39,8 @@ func LoadTorrent(tor *Torrent) *Torrent {
 	return tr
 }
 
-func AddTorrent(spec *torrent.TorrentSpec, title, poster string, data string, category string) (*Torrent, error) {
-	torr, err := NewTorrent(spec, bts)
+func AddTorrent(spec *torrent.TorrentSpec, title, poster string, data string, category string, localPath string) (*Torrent, error) {
+	torr, err := NewTorrent(spec, bts, localPath)
 	if err != nil {
 		log.TLogln("error add torrent:", err)
 		return nil, err
@@ -103,7 +104,7 @@ func GetTorrent(hashHex string) *Torrent {
 		tor = tr
 		go func() {
 			log.TLogln("New torrent", tor.Hash())
-			tr, _ := NewTorrent(tor.TorrentSpec, bts)
+			tr, _ := NewTorrent(tor.TorrentSpec, bts, tor.LocalPath)
 			if tr != nil {
 				tr.Title = tor.Title
 				tr.Poster = tor.Poster
@@ -157,6 +158,29 @@ func SetTorrent(hashHex, title, poster, category string, data string) *Torrent {
 	} else {
 		return torrDb
 	}
+}
+
+func SetLocalPath(hashHex string, path string) error {
+	if sets.ReadOnly {
+		return errors.New("read-only DB mode")
+	}
+	if path != "" {
+		path = filepath.Clean(path)
+		if err := checkLocalPath(path); err != nil {
+			return err
+		}
+	}
+	hash := metainfo.NewHashFromHex(hashHex)
+	torrDb := GetTorrentDB(hash)
+	if torrDb == nil {
+		return errors.New("torrent not found in db: " + hashHex)
+	}
+	torrDb.LocalPath = path
+	AddTorrentDB(torrDb)
+	if torr := bts.GetTorrent(hash); torr != nil {
+		torr.LocalPath = path
+	}
+	return nil
 }
 
 func RemTorrent(hashHex string) {

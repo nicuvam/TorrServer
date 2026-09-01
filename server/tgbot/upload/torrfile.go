@@ -12,7 +12,6 @@ import (
 	"server/tgbot/config"
 	"server/torr"
 	"server/torr/state"
-	"server/torr/storage/torrstor"
 )
 
 var ERR_STOPPED = errors.New("stopped")
@@ -25,7 +24,7 @@ type TorrFile struct {
 	size   int64
 	id     int
 
-	reader *torrstor.Reader
+	reader torr.Reader
 }
 
 func NewTorrFile(wrk *Worker, stFile *state.TorrentFileStat) (*TorrFile, error) {

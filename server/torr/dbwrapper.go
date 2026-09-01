@@ -7,6 +7,7 @@ import (
 	"server/torr/state"
 	"server/torr/utils"
 
+	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/metainfo"
 )
 
@@ -16,11 +17,24 @@ type tsFiles struct {
 	} `json:"TorrServer"`
 }
 
+func persistableSpec(torr *Torrent) *torrent.TorrentSpec {
+	if torr.TorrentSpec == nil {
+		return nil
+	}
+	spec := *torr.TorrentSpec
+	spec.Storage = nil
+	if torr.LocalPath != "" && len(spec.InfoBytes) == 0 && torr.Torrent != nil && torr.Torrent.Info() != nil {
+		spec.InfoBytes = torr.Torrent.Metainfo().InfoBytes
+	}
+	return &spec
+}
+
 func AddTorrentDB(torr *Torrent) {
 	t := new(settings.TorrentDB)
-	t.TorrentSpec = torr.TorrentSpec
+	t.TorrentSpec = persistableSpec(torr)
 	t.Title = torr.Title
 	t.Category = torr.Category
+	t.LocalPath = torr.LocalPath
 	if torr.Data == "" {
 		files := new(tsFiles)
 		files.TorrServer.Files = torr.Status().FileStats
@@ -58,6 +72,7 @@ func GetTorrentDB(hash metainfo.Hash) *Torrent {
 			torr.Timestamp = db.Timestamp
 			torr.Size = db.Size
 			torr.Data = db.Data
+			torr.LocalPath = db.LocalPath
 			torr.Stat = state.TorrentInDB
 			return torr
 		}
@@ -81,6 +96,7 @@ func ListTorrentsDB() map[metainfo.Hash]*Torrent {
 		torr.Timestamp = db.Timestamp
 		torr.Size = db.Size
 		torr.Data = db.Data
+		torr.LocalPath = db.LocalPath
 		torr.Stat = state.TorrentInDB
 		ret[torr.TorrentSpec.InfoHash] = torr
 	}
