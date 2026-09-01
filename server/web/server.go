@@ -20,6 +20,7 @@ import (
 
 	"server/bonjour"
 	"server/dlna"
+	"server/qbitsync"
 	"server/settings"
 	"server/web/msx"
 
@@ -95,6 +96,9 @@ func Start() {
 		bonjour.Start()
 	}
 
+	torr.SetPeerSource(qbitsync.PeerSource)
+	qbitsync.Start()
+
 	// Auto-mount FUSE filesystem if enabled
 	fuse.FuseAutoMount()
 
@@ -156,6 +160,7 @@ func Stop() {
 	gstreamer.Stop()
 	dlna.Stop()
 	bonjour.Stop()
+	qbitsync.Stop()
 	// Unmount FUSE filesystem if mounted
 	fuse.FuseCleanup()
 	BTS.Disconnect()

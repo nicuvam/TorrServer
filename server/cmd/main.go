@@ -242,7 +242,7 @@ func watchTDir(dir string) {
 					return
 				}
 
-				tor, err := torr.AddTorrent(sp, "", "", "", "") // Add parsed torrent specification into active torrent engine.
+				tor, err := torr.AddTorrent(sp, "", "", "", "", "") // Add parsed torrent specification into active torrent engine.
 				if err != nil {
 					log.TLogln("Error parse torrent file:", err)
 					return

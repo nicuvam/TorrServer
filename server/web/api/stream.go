@@ -128,15 +128,23 @@ func stream(c *gin.Context) {
 		}
 	}
 
+	localPath := ""
+
 	tor := torr.GetTorrent(spec.InfoHash.HexString())
 	if tor != nil {
 		title = tor.Title
 		poster = tor.Poster
 		data = tor.Data
 		category = tor.Category
+		localPath = tor.LocalPath
 	}
+
+	if play && !stat && !m3u && !save && qbitServeFile(c, tor, indexStr) {
+		return
+	}
+
 	if tor == nil || tor.Stat == state.TorrentInDB {
-		tor, err = torr.AddTorrent(spec, title, poster, data, category)
+		tor, err = torr.AddTorrent(spec, title, poster, data, category, localPath)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return
@@ -269,9 +277,14 @@ func streamNoAuth(c *gin.Context) {
 	}
 
 	data := tor.Data
+	localPath := tor.LocalPath
+
+	if play && !m3u && qbitServeFile(c, tor, indexStr) {
+		return
+	}
 
 	if tor.Stat == state.TorrentInDB {
-		tor, err = torr.AddTorrent(spec, title, poster, data, category)
+		tor, err = torr.AddTorrent(spec, title, poster, data, category, localPath)
 		if err != nil {
 			c.AbortWithError(http.StatusInternalServerError, err)
 			return

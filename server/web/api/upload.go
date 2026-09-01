@@ -26,6 +26,7 @@ import (
 //	@Param			category	formData	string	false	"Torrent category"
 //	@Param			poster	formData	string	false	"Torrent poster (single file only)"
 //	@Param			data	formData	string	false	"Torrent data"
+//	@Param			local_path	formData	string	false	"Path with already downloaded files to serve the torrent from"
 //
 //	@Accept			multipart/form-data
 //
@@ -58,6 +59,11 @@ func torrentUpload(c *gin.Context) {
 	if len(form.Value["data"]) > 0 {
 		data = form.Value["data"][0]
 	}
+	localPath := ""
+	if len(form.Value["local_path"]) > 0 {
+		localPath = form.Value["local_path"][0]
+	}
+	save = save || localPath != ""
 
 	var files []*multipart.FileHeader
 	for _, fh := range form.File {
@@ -81,9 +87,13 @@ func torrentUpload(c *gin.Context) {
 			continue
 		}
 
-		tor, err := torr.AddTorrent(spec, title, poster, data, category)
+		tor, err := torr.AddTorrent(spec, title, poster, data, category, localPath)
 		if err != nil {
 			log.TLogln("error upload torrent:", err)
+			if localPath != "" {
+				abortWithJSONError(c, http.StatusBadRequest, err)
+				return
+			}
 			continue
 		}
 

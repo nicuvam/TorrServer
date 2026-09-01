@@ -20,7 +20,7 @@ func addTorrentFromSpec(c tele.Context, torrSpec *torrent.TorrentSpec, displayLa
 		return err
 	}
 
-	tor, err := torr.AddTorrent(torrSpec, "", "", "", "")
+	tor, err := torr.AddTorrent(torrSpec, "", "", "", "", "")
 	if err != nil {
 		log.TLogln("tg add err", err)
 		_, _ = c.Bot().Edit(msg, fmt.Sprintf(tr(c.Sender().ID, "add_error"), err.Error()))

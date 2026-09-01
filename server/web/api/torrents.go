@@ -9,6 +9,7 @@ import (
 	"server/dlna"
 	gstreamer "server/gstreamer/bridge"
 	"server/log"
+	"server/qbitsync"
 	set "server/settings"
 	"server/torr"
 	"server/torr/state"
@@ -22,13 +23,16 @@ import (
 // Action: add, get, set, rem, list, drop
 type torrReqJS struct {
 	requestI
-	Link     string `json:"link,omitempty"`
-	Hash     string `json:"hash,omitempty"`
-	Title    string `json:"title,omitempty"`
-	Category string `json:"category,omitempty"`
-	Poster   string `json:"poster,omitempty"`
-	Data     string `json:"data,omitempty"`
-	SaveToDB bool   `json:"save_to_db,omitempty"`
+	Link            string `json:"link,omitempty"`
+	Hash            string `json:"hash,omitempty"`
+	Title           string `json:"title,omitempty"`
+	Category        string `json:"category,omitempty"`
+	Poster          string `json:"poster,omitempty"`
+	Data            string `json:"data,omitempty"`
+	LocalPath       string `json:"local_path,omitempty"`
+	SaveToDB        bool   `json:"save_to_db,omitempty"`
+	QBitDelete      bool   `json:"qbit_delete,omitempty"`
+	QBitDeleteFiles bool   `json:"qbit_delete_files,omitempty"`
 }
 
 // abortWithJSONError aborts the request with a JSON body. gin's
@@ -45,7 +49,7 @@ func abortWithJSONError(c *gin.Context, code int, err error) {
 //
 //	@Tags			API
 //
-//	@Param			request	body	torrReqJS	true	"Torrent request. Available params for action: add, get, set, rem, list, drop, wipe. link required for add, hash required for get, set, rem, drop."
+//	@Param			request	body	torrReqJS	true	"Torrent request. Available params for action: add, get, set, rem, list, drop, wipe, download. link required for add, hash required for get, set, rem, drop, download."
 //
 //	@Accept			json
 //	@Produce		json
@@ -87,6 +91,10 @@ func torrents(c *gin.Context) {
 	case "wipe":
 		{
 			wipeTorrents(c)
+		}
+	case "download":
+		{
+			downloadTorrent(req, c)
 		}
 	default:
 		{
@@ -134,12 +142,18 @@ func addTorrent(req torrReqJS, c *gin.Context) {
 		}
 	}
 
-	tor, err := torr.AddTorrent(torrSpec, req.Title, req.Poster, req.Data, req.Category)
+	tor, err := torr.AddTorrent(torrSpec, req.Title, req.Poster, req.Data, req.Category, req.LocalPath)
 	if err != nil {
 		log.TLogln("error add torrent:", err)
-		abortWithJSONError(c, http.StatusInternalServerError, err)
+		if req.LocalPath != "" {
+			abortWithJSONError(c, http.StatusBadRequest, err)
+		} else {
+			abortWithJSONError(c, http.StatusInternalServerError, err)
+		}
 		return
 	}
+
+	saveToDB := req.SaveToDB || req.LocalPath != ""
 
 	go func() {
 		if !tor.GotInfo() {
@@ -157,7 +171,7 @@ func addTorrent(req torrReqJS, c *gin.Context) {
 			}
 		}
 
-		if req.SaveToDB {
+		if saveToDB {
 			torr.SaveTorrentToDB(tor)
 		}
 	}()
@@ -178,6 +192,7 @@ func getTorrent(req torrReqJS, c *gin.Context) {
 
 	if tor != nil {
 		st := tor.Status()
+		qbitsync.Enrich([]*state.TorrentStatus{st})
 		c.JSON(200, st)
 	} else {
 		c.Status(http.StatusNotFound)
@@ -197,6 +212,11 @@ func remTorrent(req torrReqJS, c *gin.Context) {
 	if req.Hash == "" {
 		abortWithJSONError(c, http.StatusBadRequest, errors.New("hash is empty"))
 		return
+	}
+	if req.QBitDelete || req.QBitDeleteFiles {
+		if err := qbitsync.DeleteInQBit(req.Hash, req.QBitDeleteFiles); err != nil {
+			log.TLogln("error delete torrent in qbittorrent:", err)
+		}
 	}
 	torr.RemTorrent(req.Hash)
 	gstreamer.Remove(req.Hash)
@@ -218,6 +238,7 @@ func listTorrents(c *gin.Context) {
 	for _, tr := range list {
 		stats = append(stats, tr.Status())
 	}
+	qbitsync.Enrich(stats)
 	c.JSON(200, stats)
 }
 
