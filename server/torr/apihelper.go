@@ -161,6 +161,10 @@ func SetTorrent(hashHex, title, poster, category string, data string) *Torrent {
 	}
 }
 
+func HasLiveTorrent(hash metainfo.Hash) bool {
+	return bts != nil && bts.GetTorrent(hash) != nil
+}
+
 func ApplyDefaultTitle(torr *Torrent) {
 	if torr.Title != "" || torr.TorrentSpec == nil {
 		return

@@ -137,7 +137,14 @@ func (s *service) stop() {
 }
 
 func fingerprint(cfg settings.QBitConfig) string {
-	return strings.Join([]string{cfg.URL, cfg.Username, cfg.Password, strconv.FormatBool(cfg.Enabled)}, "|")
+	maps := make([]string, 0, len(cfg.PathMaps))
+	for _, m := range cfg.PathMaps {
+		maps = append(maps, m.From+">"+m.To)
+	}
+	return strings.Join([]string{
+		cfg.URL, cfg.Username, cfg.Password, strconv.FormatBool(cfg.Enabled),
+		cfg.SavePath, strings.Join(maps, ","),
+	}, "|")
 }
 
 func (s *service) acquire() (clientAPI, error) {

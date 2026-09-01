@@ -147,6 +147,12 @@ func importSpec(client clientAPI, hash string, info qbit.TorrentInfo) (*torrent.
 }
 
 func importTorrentViaAdd(spec *torrent.TorrentSpec, category string) error {
+	if len(spec.InfoBytes) == 0 {
+		return importRecordOnly(spec, category)
+	}
+	if torr.HasLiveTorrent(spec.InfoHash) {
+		return nil
+	}
 	tor, err := torr.AddTorrent(spec, "", "", "", category, "")
 	if err != nil {
 		return err
@@ -156,7 +162,23 @@ func importTorrentViaAdd(spec *torrent.TorrentSpec, category string) error {
 	}
 	torr.ApplyDefaultTitle(tor)
 	torr.SaveTorrentToDB(tor)
-	tor.Drop()
+	if tor.ActiveReaders() == 0 {
+		torr.DropTorrent(spec.InfoHash.HexString())
+	}
+	return nil
+}
+
+func importRecordOnly(spec *torrent.TorrentSpec, category string) error {
+	sanitized := *spec
+	sanitized.Storage = nil
+	titled := &torr.Torrent{TorrentSpec: &sanitized}
+	torr.ApplyDefaultTitle(titled)
+	settings.AddTorrent(&settings.TorrentDB{
+		TorrentSpec: &sanitized,
+		Title:       titled.Title,
+		Category:    category,
+		Timestamp:   nowFunc().Unix(),
+	})
 	return nil
 }
 
