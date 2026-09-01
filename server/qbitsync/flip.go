@@ -6,6 +6,7 @@ import (
 
 	"github.com/anacrolix/torrent/metainfo"
 
+	"server/log"
 	"server/qbit"
 	"server/torr/storage/filestor"
 )
@@ -75,7 +76,8 @@ func (s *service) flip(record torrentRecord, info qbit.TorrentInfo) error {
 		return fmt.Errorf("qbittorrent: no content path for %s", record.Hash)
 	}
 	if _, err = filestor.PreValidate(&meta, local); err != nil {
-		return err
+		log.TLogln("qbittorrent flip validation:", record.Hash, err)
+		return fmt.Errorf("local files not found at %s", local)
 	}
 	return setLocalPath(record.Hash, local)
 }
