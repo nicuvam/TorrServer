@@ -40,6 +40,7 @@ export default function AddDialog({
   const isEditMode = !!originalHash
   const [torrentSource, setTorrentSource] = useState(originalHash || '')
   const [title, setTitle] = useState(originalTitle && originalTitle !== originalName ? originalTitle : '')
+  const [initialTitle] = useState(originalTitle || originalName || '')
   const [category, setCategory] = useState(originalCategory || '')
   const [originalTorrentTitle, setOriginalTorrentTitle] = useState('')
   const [parsedTitle, setParsedTitle] = useState('')
@@ -247,7 +248,7 @@ export default function AddDialog({
         .post(torrentsHost(), {
           action: 'set',
           hash: originalHash,
-          title: title || originalName,
+          title: title || initialTitle,
           poster: posterUrl,
           category,
         })

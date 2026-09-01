@@ -54,6 +54,7 @@ export default function DialogTorrentDetailsContent({ closeDialog, torrent }) {
     category,
     name,
     stat,
+    local_path: localPath,
     download_speed: downloadSpeed,
     upload_speed: uploadSpeed,
     torrent_size: torrentSize,
@@ -204,13 +205,17 @@ export default function DialogTorrentDetailsContent({ closeDialog, torrent }) {
             <CacheSection>
               <SectionHeader>
                 <SectionTitle mb={20}>{t('Buffer')}</SectionTitle>
-                {bufferSize <= 33554432 && <SectionSubName>{t('BufferNote')}</SectionSubName>}
-                <LoadingProgress
-                  value={Filled}
-                  style={{ marginTop: '5px' }}
-                  fullAmount={bufferSize}
-                  label={`${humanizeSize(bufferSize)} / ${humanizeSize(Filled) || `0 ${t('B')}`}`}
-                />
+                {!localPath && bufferSize <= 33554432 && <SectionSubName>{t('BufferNote')}</SectionSubName>}
+                {localPath ? (
+                  <SectionSubName>{`${t('QBit.LocalFile')}: ${localPath}`}</SectionSubName>
+                ) : (
+                  <LoadingProgress
+                    value={Filled}
+                    style={{ marginTop: '5px' }}
+                    fullAmount={bufferSize}
+                    label={`${humanizeSize(bufferSize)} / ${humanizeSize(Filled) || `0 ${t('B')}`}`}
+                  />
+                )}
               </SectionHeader>
 
               <TorrentCache isMini cache={cache} isSnakeDebugMode={isSnakeDebugMode} />

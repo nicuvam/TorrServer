@@ -218,6 +218,7 @@ const Torrent = ({ torrent }) => {
     data,
     file_stats: torrentFileList,
     local_path: localPath,
+    timestamp,
     qbit_state: qbitState,
     qbit_progress: qbitProgress,
     qbit_dlspeed: qbitDlSpeed,
@@ -231,19 +232,29 @@ const Torrent = ({ torrent }) => {
   const showQbitDeleteOptions = Boolean(qbitState) || Boolean(localPath)
 
   useEffect(() => {
-    if (poster || !qbitState || posterLookupDone.has(hash)) return
+    const lookupKey = `${hash}:${timestamp}`
+    const isRecent = Number.isFinite(timestamp) && Date.now() / 1000 - timestamp < 900
+    if (poster || !qbitState || !isRecent || posterLookupDone.has(lookupKey)) return
     const query = shortenTitleForPosterSearch(title || name)
     if (!query) return
-    posterLookupDone.add(hash)
+    posterLookupDone.add(lookupKey)
     const language = currentLang === 'ru' ? 'ru' : 'en'
-    getMoviePosters(query, language).then(urls => {
-      if (urls?.[0]) {
-        axios
-          .post(torrentsHost(), { action: 'set', hash, title, poster: urls[0], category, data })
-          .then(() => posterLookupDone.delete(hash))
-      }
-    })
-  }, [poster, qbitState, hash, title, name, category, data, currentLang])
+    getMoviePosters(query, language)
+      .then(async urls => {
+        if (!urls?.[0]) return
+        const { data: fresh } = await axios.post(torrentsHost(), { action: 'get', hash })
+        if (!fresh?.hash || fresh.poster) return
+        await axios.post(torrentsHost(), {
+          action: 'set',
+          hash,
+          title: fresh.title,
+          poster: urls[0],
+          category: fresh.category,
+          data: fresh.data,
+        })
+      })
+      .catch(() => {})
+  }, [poster, qbitState, hash, timestamp, title, name, currentLang])
 
   const qbitProgressLabel = () => {
     if ((qbitProgress || 0) >= 1) return '100%'
@@ -765,6 +776,7 @@ export default memo(Torrent, (prev, next) => {
     p.torrent_size === n.torrent_size &&
     p.download_speed === n.download_speed &&
     p.data === n.data &&
+    p.timestamp === n.timestamp &&
     p.local_path === n.local_path &&
     p.qbit_state === n.qbit_state &&
     p.qbit_progress === n.qbit_progress &&
