@@ -135,6 +135,11 @@ export const shortenTitleForPosterSearch = (fullTitle, opts = {}) => {
   } catch (_) {
     // ignore
   }
+  const withoutSeason = base
+    .replace(/\b[Ss]\d{1,2}(?:-[Ss]?\d{1,2})?\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (withoutSeason) base = withoutSeason
   const words = base.split(/\s+/).filter(Boolean)
   const byWords = words.slice(0, maxWords).join(' ')
   if (byWords.length <= maxLen) return byWords.trim()

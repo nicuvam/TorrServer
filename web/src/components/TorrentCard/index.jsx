@@ -12,6 +12,7 @@ import { getPeerString, humanizeSize, humanizeSpeed, removeRedundantCharacters }
 import { playlistTorrHost, streamHost, torrentsHost } from 'utils/Hosts'
 import { NoImageIcon } from 'icons'
 import DialogTorrentDetailsContent from 'components/DialogTorrentDetailsContent'
+import { getMoviePosters, shortenTitleForPosterSearch } from 'components/Add/helpers'
 import Dialog from '@material-ui/core/Dialog'
 import Slide from '@material-ui/core/Slide'
 import {
@@ -160,8 +161,10 @@ const sameFileList = (left, right) => {
   )
 }
 
+const posterLookupDone = new Set()
+
 const Torrent = ({ torrent }) => {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [isDetailedInfoOpened, setIsDetailedInfoOpened] = useState(false)
   const [isDeleteTorrentOpened, setIsDeleteTorrentOpened] = useState(false)
   const [unsupportedPlayers, setUnsupportedPlayers] = useState({})
@@ -224,6 +227,19 @@ const Torrent = ({ torrent }) => {
   const [qbitDeleteChecked, setQbitDeleteChecked] = useState(false)
   const [qbitDeleteFilesChecked, setQbitDeleteFilesChecked] = useState(false)
   const showQbitDeleteOptions = Boolean(qbitState) || Boolean(localPath)
+
+  useEffect(() => {
+    if (poster || !qbitState || posterLookupDone.has(hash)) return
+    const query = shortenTitleForPosterSearch(title || name)
+    if (!query) return
+    posterLookupDone.add(hash)
+    const language = i18n.language === 'ru' ? 'ru' : 'en'
+    getMoviePosters(query, language).then(urls => {
+      if (urls?.[0]) {
+        axios.post(torrentsHost(), { action: 'set', hash, title, poster: urls[0], category, data })
+      }
+    })
+  }, [poster, qbitState, hash, title, name, category, data, i18n.language])
 
   const qbitProgressLabel = () => {
     if ((qbitProgress || 0) >= 1) return '100%'
