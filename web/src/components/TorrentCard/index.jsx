@@ -225,6 +225,14 @@ const Torrent = ({ torrent }) => {
   const [qbitDeleteFilesChecked, setQbitDeleteFilesChecked] = useState(false)
   const showQbitDeleteOptions = Boolean(qbitState) || Boolean(localPath)
 
+  const qbitProgressLabel = () => {
+    if ((qbitProgress || 0) >= 1) return '100%'
+    const parts = [`${Math.round((qbitProgress || 0) * 100)}%`]
+    if (qbitDlSpeed > 0) parts.push(humanizeSpeed(qbitDlSpeed))
+    if (Number.isFinite(qbitEta) && qbitEta > 0 && qbitEta < 8640000) parts.push(`${t('QBit.ETA')} ${formatEta(qbitEta)}`)
+    return parts.join(' · ')
+  }
+
   const startQbitDownload = async () => {
     setIsQbitDownloadPending(true)
     try {
@@ -566,19 +574,13 @@ const Torrent = ({ torrent }) => {
               <Tooltip title={qbitError}>
                 <QBitProgressButton hasError onClick={startQbitDownload} disabled={isQbitDownloadPending}>
                   <WarningIcon />
-                  <span>
-                    {Math.round((qbitProgress || 0) * 100)}% · {qbitDlSpeed > 0 ? humanizeSpeed(qbitDlSpeed) : '---'} ·{' '}
-                    {t('QBit.ETA')} {formatEta(qbitEta)}
-                  </span>
+                  <span>{qbitProgressLabel()}</span>
                 </QBitProgressButton>
               </Tooltip>
             ) : (
               <QBitProgressButton disabled>
                 <GetAppIcon />
-                <span>
-                  {Math.round((qbitProgress || 0) * 100)}% · {qbitDlSpeed > 0 ? humanizeSpeed(qbitDlSpeed) : '---'} ·{' '}
-                  {t('QBit.ETA')} {formatEta(qbitEta)}
-                </span>
+                <span>{qbitProgressLabel()}</span>
               </QBitProgressButton>
             )
           ) : (
