@@ -238,7 +238,9 @@ const Torrent = ({ torrent }) => {
     const language = currentLang === 'ru' ? 'ru' : 'en'
     getMoviePosters(query, language).then(urls => {
       if (urls?.[0]) {
-        axios.post(torrentsHost(), { action: 'set', hash, title, poster: urls[0], category, data })
+        axios
+          .post(torrentsHost(), { action: 'set', hash, title, poster: urls[0], category, data })
+          .then(() => posterLookupDone.delete(hash))
       }
     })
   }, [poster, qbitState, hash, title, name, category, data, currentLang])
