@@ -534,5 +534,22 @@ func (t *Torrent) CacheState() *cacheSt.CacheState {
 		st.Torrent = t.Status()
 		return st
 	}
+	if t.isLocal() && t.Torrent != nil && t.Torrent.Info() != nil {
+		info := t.Torrent.Info()
+		st := new(cacheSt.CacheState)
+		st.Hash = t.Hash().HexString()
+		st.Capacity = t.Torrent.Length()
+		st.Filled = t.Torrent.Length()
+		st.PiecesLength = info.PieceLength
+		st.PiecesCount = info.NumPieces()
+		st.Pieces = make(map[int]cacheSt.ItemState, st.PiecesCount)
+		for i := 0; i < st.PiecesCount; i++ {
+			length := info.Piece(i).Length()
+			st.Pieces[i] = cacheSt.ItemState{Id: i, Length: length, Size: length, Completed: true}
+		}
+		st.Readers = []*cacheSt.ReaderState{}
+		st.Torrent = t.Status()
+		return st
+	}
 	return nil
 }
