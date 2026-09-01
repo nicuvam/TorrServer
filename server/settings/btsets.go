@@ -33,6 +33,25 @@ type TMDBConfig struct {
 	ImageURLRu string // Image URL for Russian users (default: https://imagetmdb.com)
 }
 
+type QBitPathMap struct {
+	From string
+	To   string
+}
+
+type QBitConfig struct {
+	Enabled            bool
+	URL                string
+	Username           string
+	Password           string
+	Tags               string
+	SavePath           string
+	SequentialDownload bool
+	FirstLastPiecePrio bool
+	PathMaps           []QBitPathMap
+	AutoLocal          bool
+	AutoImport         bool
+}
+
 type BTSets struct {
 	// Cache
 	CacheSize       int64 // in byte, def 64 MB
@@ -68,6 +87,9 @@ type BTSets struct {
 
 	// TMDB
 	TMDBSettings TMDBConfig
+
+	// qBittorrent
+	QBitSettings QBitConfig
 
 	// BT Config
 	EnableIPv6        bool
@@ -205,6 +227,12 @@ func SetDefaultConfig() {
 	sets.EnableLPD = true
 	sets.LPDIPv6 = false
 	sets.EnableBonjour = true
+	sets.QBitSettings = QBitConfig{
+		Tags:               "torrserver",
+		SequentialDownload: true,
+		FirstLastPiecePrio: true,
+		AutoLocal:          true,
+	}
 	// Set default TMDB settings
 	sets.TMDBSettings = TMDBConfig{
 		APIKey:     "",
@@ -245,6 +273,14 @@ func loadBTSets() {
 			if json.Unmarshal(buf, &raw) == nil {
 				if _, ok := raw["EnableBonjour"]; !ok {
 					BTsets.EnableBonjour = true
+				}
+				if _, ok := raw["QBitSettings"]; !ok {
+					BTsets.QBitSettings = QBitConfig{
+						Tags:               "torrserver",
+						SequentialDownload: true,
+						FirstLastPiecePrio: true,
+						AutoLocal:          true,
+					}
 				}
 			}
 			// Upgrade older configs that never had tracker list fields.
