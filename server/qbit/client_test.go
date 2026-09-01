@@ -84,7 +84,7 @@ func (m *mockQB) serve(w http.ResponseWriter, r *http.Request) {
 	m.mu.Unlock()
 
 	if isLogin {
-		if status == http.StatusOK && loginBody == loginSuccessBody && cookie != "" {
+		if status >= http.StatusOK && status < http.StatusMultipleChoices && (loginBody == loginSuccessBody || loginBody == "") && cookie != "" {
 			http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: cookie})
 		}
 		w.WriteHeader(status)
@@ -152,6 +152,8 @@ func TestLoginOutcomes(t *testing.T) {
 		wantErr error
 	}{
 		{name: "ok", status: http.StatusOK, body: "Ok.", cookie: "session-1"},
+		{name: "no content 5.2", status: http.StatusNoContent, body: "", cookie: "session-1"},
+		{name: "empty body", status: http.StatusOK, body: "", cookie: "session-1"},
 		{name: "fails body", status: http.StatusOK, body: "Fails.", cookie: "session-1", wantErr: ErrAuth},
 		{name: "unauthorized", status: http.StatusUnauthorized, body: "", cookie: "", wantErr: ErrAuth},
 		{name: "banned", status: http.StatusForbidden, body: "", cookie: "", wantErr: ErrBanned},
@@ -367,5 +369,29 @@ func TestNormalizeBaseURL(t *testing.T) {
 		if got := normalizeBaseURL(test.raw); got != test.want {
 			t.Fatalf("normalizeBaseURL(%q) = %q, want %q", test.raw, got, test.want)
 		}
+	}
+}
+
+func TestModernSessionCookieName(t *testing.T) {
+	var gotCookie string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/"+loginPath {
+			http.SetCookie(w, &http.Cookie{Name: "QBT_SID_8080", Value: "modern-sid"})
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if c, err := r.Cookie("QBT_SID_8080"); err == nil {
+			gotCookie = c.Value
+		}
+		w.Write([]byte("[]"))
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL, "user", "pass")
+	if _, err := client.Info(nil); err != nil {
+		t.Fatalf("Info: %v", err)
+	}
+	if gotCookie != "modern-sid" {
+		t.Fatalf("expected QBT_SID_8080 cookie on request, got %q", gotCookie)
 	}
 }

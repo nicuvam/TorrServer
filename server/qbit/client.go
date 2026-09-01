@@ -16,6 +16,8 @@ const (
 	authCooldown   = time.Minute
 	banCooldown    = 15 * time.Minute
 	sessionCookie  = "SID"
+
+	sessionCookiePrefix = "QBT_SID_"
 )
 
 type Client struct {
@@ -28,6 +30,7 @@ type Client struct {
 
 	mu             sync.Mutex
 	sid            string
+	sidName        string
 	apiVersion     string
 	loginBlockedTo time.Time
 	loginBlockErr  error
@@ -41,6 +44,15 @@ func New(baseURL, username, password string) *Client {
 		http:     &http.Client{Timeout: requestTimeout},
 		now:      time.Now,
 	}
+}
+
+func (c *Client) cookieName() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.sidName != "" {
+		return c.sidName
+	}
+	return sessionCookie
 }
 
 type response struct {
@@ -95,7 +107,7 @@ func (c *Client) send(method, path, contentType string, body []byte, sid string)
 		req.Header.Set("Content-Type", contentType)
 	}
 	if sid != "" {
-		req.AddCookie(&http.Cookie{Name: sessionCookie, Value: sid})
+		req.AddCookie(&http.Cookie{Name: c.cookieName(), Value: sid})
 	}
 
 	resp, err := c.http.Do(req)

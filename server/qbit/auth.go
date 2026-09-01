@@ -60,20 +60,21 @@ func (c *Client) loginLocked() (string, error) {
 		return "", c.blockLogin(authCooldown, ErrAuth)
 	case resp.status >= http.StatusInternalServerError:
 		return "", fmt.Errorf("%w: %s", ErrUnreachable, http.StatusText(resp.status))
-	case resp.status != http.StatusOK:
+	case resp.status < http.StatusOK || resp.status >= http.StatusMultipleChoices:
 		return "", &APIError{Status: resp.status, Body: strings.TrimSpace(string(resp.body))}
 	}
 
-	if strings.TrimSpace(string(resp.body)) != loginSuccessBody {
+	if body := strings.TrimSpace(string(resp.body)); body != "" && body != loginSuccessBody {
 		return "", c.blockLogin(authCooldown, ErrAuth)
 	}
 
-	sid := sessionID(resp.cookies)
+	name, sid := sessionID(resp.cookies)
 	if sid == "" {
 		return "", c.blockLogin(authCooldown, fmt.Errorf("%w: no session cookie", ErrAuth))
 	}
 
 	c.sid = sid
+	c.sidName = name
 	return sid, nil
 }
 
@@ -85,11 +86,14 @@ func (c *Client) blockLogin(cooldown time.Duration, err error) error {
 	return err
 }
 
-func sessionID(cookies []*http.Cookie) string {
+func sessionID(cookies []*http.Cookie) (string, string) {
 	for _, cookie := range cookies {
-		if cookie.Name == sessionCookie && cookie.Value != "" {
-			return cookie.Value
+		if cookie.Value == "" {
+			continue
+		}
+		if cookie.Name == sessionCookie || strings.HasPrefix(cookie.Name, sessionCookiePrefix) {
+			return cookie.Name, cookie.Value
 		}
 	}
-	return ""
+	return "", ""
 }
