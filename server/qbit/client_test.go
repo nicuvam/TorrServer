@@ -157,7 +157,7 @@ func TestLoginOutcomes(t *testing.T) {
 		{name: "fails body", status: http.StatusOK, body: "Fails.", cookie: "session-1", wantErr: ErrAuth},
 		{name: "unauthorized", status: http.StatusUnauthorized, body: "", cookie: "", wantErr: ErrAuth},
 		{name: "banned", status: http.StatusForbidden, body: "", cookie: "", wantErr: ErrBanned},
-		{name: "no cookie", status: http.StatusOK, body: "Ok.", cookie: "", wantErr: ErrAuth},
+		{name: "no cookie bypass", status: http.StatusOK, body: "Ok.", cookie: ""},
 		{name: "server error", status: http.StatusInternalServerError, body: "", cookie: "", wantErr: ErrUnreachable},
 	}
 

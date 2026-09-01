@@ -19,7 +19,7 @@ func (c *Client) session() (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.sid != "" {
+	if c.sid != "" || c.cookieless {
 		return c.sid, nil
 	}
 	return c.loginLocked()
@@ -33,6 +33,7 @@ func (c *Client) relogin(stale string) (string, error) {
 		return c.sid, nil
 	}
 	c.sid = ""
+	c.cookieless = false
 	return c.loginLocked()
 }
 
@@ -70,7 +71,8 @@ func (c *Client) loginLocked() (string, error) {
 
 	name, sid := sessionID(resp.cookies)
 	if sid == "" {
-		return "", c.blockLogin(authCooldown, fmt.Errorf("%w: no session cookie", ErrAuth))
+		c.cookieless = true
+		return "", nil
 	}
 
 	c.sid = sid

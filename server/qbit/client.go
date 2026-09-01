@@ -31,6 +31,7 @@ type Client struct {
 	mu             sync.Mutex
 	sid            string
 	sidName        string
+	cookieless     bool
 	apiVersion     string
 	loginBlockedTo time.Time
 	loginBlockErr  error
