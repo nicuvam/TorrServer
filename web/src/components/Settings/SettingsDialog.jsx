@@ -21,6 +21,7 @@ import SecondarySettingsComponent from './SecondarySettingsComponent'
 import MobileAppSettings from './MobileAppSettings'
 import TorznabSettings from './TorznabSettings'
 import TMDBSettings from './TMDBSettings'
+import QBitSettings from './QBitSettings'
 import GStreamerSettings from './GStreamerSettings'
 
 export default function SettingsDialog({ handleClose }) {
@@ -47,8 +48,9 @@ export default function SettingsDialog({ handleClose }) {
   const tabAdditional = 1
   const tabSearch = 2
   const tabApp = 3
-  const tabGStreamer = 4
-  const maxTab = gstAvailable ? tabGStreamer : tabApp
+  const tabQBit = 4
+  const tabGStreamer = 5
+  const maxTab = gstAvailable ? tabGStreamer : tabQBit
 
   useEffect(() => {
     fetch(gstSettingsHost())
@@ -174,6 +176,8 @@ export default function SettingsDialog({ handleClose }) {
 
           <StyledTab label={t('SettingsDialog.Tabs.App')} {...a11yProps(tabApp)} />
 
+          <StyledTab label={t('SettingsDialog.Tabs.QBit')} {...a11yProps(tabQBit)} />
+
           {gstAvailable && (
             <StyledTab
               disabled={!isProMode}
@@ -234,6 +238,10 @@ export default function SettingsDialog({ handleClose }) {
                   isIinaUsed={isIinaUsed}
                   setIsIinaUsed={setIsIinaUsed}
                 />
+              </TabPanel>
+
+              <TabPanel value={selectedTab} index={tabQBit} dir={direction}>
+                <QBitSettings settings={settings} updateSettings={updateSettings} />
               </TabPanel>
 
               {gstAvailable && (

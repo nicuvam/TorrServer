@@ -254,6 +254,36 @@ export const StyledButton = styled.button`
   `}
 `
 
+export const QBitProgressButton = styled(StyledButton)`
+  ${({ hasError }) =>
+    hasError &&
+    css`
+      background: #c82e3f;
+
+      :hover {
+        background: #a8212f;
+      }
+    `}
+`
+
+export const QBitLocalBadge = styled.div`
+  ${({
+    theme: {
+      torrentCard: { accentCardColor },
+    },
+  }) => css`
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    .MuiChip-root {
+      background: ${accentCardColor};
+      color: #fff;
+      font-weight: 600;
+    }
+  `}
+`
+
 export const StatusIndicators = styled.div`
   ${({ color }) => css`
     height: 8px;

@@ -5,6 +5,8 @@ import {
   PlayArrow as PlayArrowIcon,
   Close as CloseIcon,
   Delete as DeleteIcon,
+  GetApp as GetAppIcon,
+  Warning as WarningIcon,
 } from '@material-ui/icons'
 import { getPeerString, humanizeSize, humanizeSpeed, removeRedundantCharacters } from 'utils/Utils'
 import { playlistTorrHost, streamHost, torrentsHost } from 'utils/Hosts'
@@ -14,13 +16,18 @@ import Dialog from '@material-ui/core/Dialog'
 import Slide from '@material-ui/core/Slide'
 import {
   Button,
+  Checkbox,
+  Chip,
   CircularProgress,
   DialogActions,
+  DialogContent,
   DialogTitle,
+  FormControlLabel,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
+  Tooltip,
   useMediaQuery,
   useTheme,
 } from '@material-ui/core'
@@ -44,6 +51,8 @@ import {
 } from 'utils/GStreamer'
 
 import {
+  QBitLocalBadge,
+  QBitProgressButton,
   StatusIndicators,
   StyledButton,
   TorrentCard,
@@ -64,6 +73,13 @@ const requestTorrentFiles = async (hash, isActive, attemptsLeft = 60) => {
   await wait(1000)
   if (!isActive()) return []
   return requestTorrentFiles(hash, isActive, attemptsLeft - 1)
+}
+
+const formatEta = seconds => {
+  if (!Number.isFinite(seconds) || seconds < 0 || seconds >= 8640000) return '∞'
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
 }
 
 const fileName = path => path.split('\\').pop().split('/').pop()
@@ -179,7 +195,11 @@ const Torrent = ({ torrent }) => {
   const openDetailedInfo = () => setIsDetailedInfoOpened(true)
   const closeDetailedInfo = () => setIsDetailedInfoOpened(false)
   const openDeleteTorrentAlert = () => setIsDeleteTorrentOpened(true)
-  const closeDeleteTorrentAlert = () => setIsDeleteTorrentOpened(false)
+  const closeDeleteTorrentAlert = () => {
+    setIsDeleteTorrentOpened(false)
+    setQbitDeleteChecked(false)
+    setQbitDeleteFilesChecked(false)
+  }
 
   const {
     title,
@@ -192,10 +212,35 @@ const Torrent = ({ torrent }) => {
     stat,
     data,
     file_stats: torrentFileList,
+    local_path: localPath,
+    qbit_state: qbitState,
+    qbit_progress: qbitProgress,
+    qbit_dlspeed: qbitDlSpeed,
+    qbit_eta: qbitEta,
+    qbit_error: qbitError,
   } = torrent
 
+  const [isQbitDownloadPending, setIsQbitDownloadPending] = useState(false)
+  const [qbitDeleteChecked, setQbitDeleteChecked] = useState(false)
+  const [qbitDeleteFilesChecked, setQbitDeleteFilesChecked] = useState(false)
+  const showQbitDeleteOptions = Boolean(qbitState) || Boolean(localPath)
+
+  const startQbitDownload = async () => {
+    setIsQbitDownloadPending(true)
+    try {
+      await axios.post(torrentsHost(), { action: 'download', hash })
+    } finally {
+      if (isMounted.current) setIsQbitDownloadPending(false)
+    }
+  }
+
   const dropTorrent = () => axios.post(torrentsHost(), { action: 'drop', hash })
-  const deleteTorrent = () => axios.post(torrentsHost(), { action: 'rem', hash })
+  const deleteTorrent = () =>
+    axios.post(torrentsHost(), {
+      action: 'rem',
+      hash,
+      ...(showQbitDeleteOptions && { qbit_delete: qbitDeleteChecked, qbit_delete_files: qbitDeleteFilesChecked }),
+    })
 
   const getParsedTitle = () => {
     const parse = key => ptt.parse(title || '')?.[key] || ptt.parse(name || '')?.[key]
@@ -510,6 +555,39 @@ const Torrent = ({ torrent }) => {
             />
           )}
 
+          {localPath ? (
+            <Tooltip title={`${t('QBit.LocalFile')}: ${localPath}`}>
+              <QBitLocalBadge>
+                <Chip size='small' label={t('QBit.Local')} />
+              </QBitLocalBadge>
+            </Tooltip>
+          ) : qbitState ? (
+            qbitError ? (
+              <Tooltip title={qbitError}>
+                <QBitProgressButton hasError onClick={startQbitDownload} disabled={isQbitDownloadPending}>
+                  <WarningIcon />
+                  <span>
+                    {Math.round((qbitProgress || 0) * 100)}% · {qbitDlSpeed > 0 ? humanizeSpeed(qbitDlSpeed) : '---'} ·{' '}
+                    {t('QBit.ETA')} {formatEta(qbitEta)}
+                  </span>
+                </QBitProgressButton>
+              </Tooltip>
+            ) : (
+              <QBitProgressButton disabled>
+                <GetAppIcon />
+                <span>
+                  {Math.round((qbitProgress || 0) * 100)}% · {qbitDlSpeed > 0 ? humanizeSpeed(qbitDlSpeed) : '---'} ·{' '}
+                  {t('QBit.ETA')} {formatEta(qbitEta)}
+                </span>
+              </QBitProgressButton>
+            )
+          ) : (
+            <StyledButton onClick={startQbitDownload} disabled={isQbitDownloadPending}>
+              {isQbitDownloadPending ? <CircularProgress size={20} color='inherit' /> : <GetAppIcon />}
+              <span>{t('QBit.Download')}</span>
+            </StyledButton>
+          )}
+
           <StyledButton onClick={() => dropTorrent(torrent)}>
             <CloseIcon />
             <span>{t('Drop')}</span>
@@ -567,6 +645,30 @@ const Torrent = ({ torrent }) => {
 
       <Dialog open={isDeleteTorrentOpened} onClose={closeDeleteTorrentAlert}>
         <DialogTitle>{t('DeleteTorrent?')}</DialogTitle>
+        {showQbitDeleteOptions && (
+          <DialogContent>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={qbitDeleteChecked}
+                  onChange={e => setQbitDeleteChecked(e.target.checked)}
+                  color='secondary'
+                />
+              }
+              label={t('QBit.DeleteInQBit')}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={qbitDeleteFilesChecked}
+                  onChange={e => setQbitDeleteFilesChecked(e.target.checked)}
+                  color='secondary'
+                />
+              }
+              label={t('QBit.DeleteFiles')}
+            />
+          </DialogContent>
+        )}
         <DialogActions>
           <Button variant='outlined' onClick={closeDeleteTorrentAlert} color='secondary'>
             {t('Cancel')}
@@ -639,6 +741,12 @@ export default memo(Torrent, (prev, next) => {
     p.torrent_size === n.torrent_size &&
     p.download_speed === n.download_speed &&
     p.data === n.data &&
+    p.local_path === n.local_path &&
+    p.qbit_state === n.qbit_state &&
+    p.qbit_progress === n.qbit_progress &&
+    p.qbit_dlspeed === n.qbit_dlspeed &&
+    p.qbit_eta === n.qbit_eta &&
+    p.qbit_error === n.qbit_error &&
     sameFileList(p.file_stats, n.file_stats)
   )
 })
