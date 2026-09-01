@@ -228,8 +228,10 @@ const Torrent = ({ torrent }) => {
   const qbitProgressLabel = () => {
     if ((qbitProgress || 0) >= 1) return '100%'
     const parts = [`${Math.round((qbitProgress || 0) * 100)}%`]
-    if (qbitDlSpeed > 0) parts.push(humanizeSpeed(qbitDlSpeed))
-    if (Number.isFinite(qbitEta) && qbitEta > 0 && qbitEta < 8640000) parts.push(`${t('QBit.ETA')} ${formatEta(qbitEta)}`)
+    if (qbitDlSpeed > 0) {
+      parts.push(humanizeSpeed(qbitDlSpeed))
+      if (Number.isFinite(qbitEta) && qbitEta > 0 && qbitEta < 8640000) parts.push(`${t('QBit.ETA')} ${formatEta(qbitEta)}`)
+    }
     return parts.join(' · ')
   }
 
