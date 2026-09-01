@@ -460,6 +460,7 @@ func (t *Torrent) Status() *state.TorrentStatus {
 
 	if t.TorrentSpec != nil {
 		st.Hash = t.TorrentSpec.InfoHash.HexString()
+		st.Name = t.TorrentSpec.DisplayName
 	}
 	if t.Torrent != nil {
 		st.Name = t.Torrent.Name()
