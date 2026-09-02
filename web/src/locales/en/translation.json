@@ -347,7 +347,7 @@
     "Password": "Password",
     "Test": "Test",
     "ConnectionSuccessful": "Connection successful",
-    "TestHint": "Test only checks the connection. Create categories adds Movies / TV / Music / Other to qBittorrent",
+    "TestHint": "Test only checks the connection. Create categories uses the saved connection settings and adds Movies / TV / Music / Other to qBittorrent — save this tab first",
     "CreateCategories": "Create categories",
     "CategoriesCreated": "Categories created in qBittorrent",
     "Tags": "Tags",

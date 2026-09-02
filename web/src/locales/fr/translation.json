@@ -330,7 +330,7 @@
     "Password": "Mot de passe",
     "Test": "Tester",
     "ConnectionSuccessful": "Connexion réussie",
-    "TestHint": "Le test vérifie uniquement la connexion. « Créer les catégories » ajoute Films / Séries / Musique / Autre dans qBittorrent",
+    "TestHint": "Le test vérifie uniquement la connexion. « Créer les catégories » utilise les paramètres de connexion enregistrés et ajoute Films / Séries / Musique / Autre dans qBittorrent — enregistrez d'abord cet onglet",
     "CreateCategories": "Créer les catégories",
     "CategoriesCreated": "Catégories créées dans qBittorrent",
     "Tags": "Étiquettes",

@@ -225,7 +225,7 @@ const Torrent = ({ torrent }) => {
     timestamp,
     qbit_state: qbitState,
     qbit_progress: qbitProgress,
-    qbit_dlspeed: qbitDlSpeed,
+    qbit_download_speed: qbitDownloadSpeed,
     qbit_eta: qbitEta,
     qbit_error: qbitError,
   } = torrent
@@ -284,8 +284,8 @@ const Torrent = ({ torrent }) => {
   const qbitProgressLabel = () => {
     if ((qbitProgress || 0) >= 1) return '100%'
     const parts = [`${Math.round((qbitProgress || 0) * 100)}%`]
-    if (qbitDlSpeed > 0) {
-      parts.push(humanizeSpeed(qbitDlSpeed))
+    if (qbitDownloadSpeed > 0) {
+      parts.push(humanizeSpeed(qbitDownloadSpeed))
       if (Number.isFinite(qbitEta) && qbitEta > 0 && qbitEta < 8640000) parts.push(`${t('QBit.ETA')} ${formatEta(qbitEta)}`)
     }
     return parts.join(' · ')
@@ -838,7 +838,7 @@ export default memo(Torrent, (prev, next) => {
     p.local_path === n.local_path &&
     p.qbit_state === n.qbit_state &&
     p.qbit_progress === n.qbit_progress &&
-    p.qbit_dlspeed === n.qbit_dlspeed &&
+    p.qbit_download_speed === n.qbit_download_speed &&
     p.qbit_eta === n.qbit_eta &&
     p.qbit_error === n.qbit_error &&
     sameFileList(p.file_stats, n.file_stats)

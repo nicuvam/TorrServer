@@ -336,7 +336,7 @@
     "Password": "Parolă",
     "Test": "Test",
     "ConnectionSuccessful": "Conexiune reușită",
-    "TestHint": "Testul verifică doar conexiunea. „Creează categorii” adaugă Filme / Seriale / Muzică / Altele în qBittorrent",
+    "TestHint": "Testul verifică doar conexiunea. „Creează categorii” folosește setările de conexiune salvate și adaugă Filme / Seriale / Muzică / Altele în qBittorrent — salvați mai întâi această filă",
     "CreateCategories": "Creează categorii",
     "CategoriesCreated": "Categorii create în qBittorrent",
     "Tags": "Etichete",

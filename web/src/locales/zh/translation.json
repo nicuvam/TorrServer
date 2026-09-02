@@ -330,7 +330,7 @@
     "Password": "密码",
     "Test": "测试",
     "ConnectionSuccessful": "连接成功",
-    "TestHint": "测试仅检查连接。“创建分类”会在 qBittorrent 中添加电影 / 剧集 / 音乐 / 其他",
+    "TestHint": "测试仅检查连接。“创建分类”会使用已保存的连接设置，在 qBittorrent 中添加电影 / 剧集 / 音乐 / 其他——请先保存此标签页",
     "CreateCategories": "创建分类",
     "CategoriesCreated": "已在 qBittorrent 中创建分类",
     "Tags": "标签",
