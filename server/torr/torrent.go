@@ -120,10 +120,8 @@ func NewTorrent(spec *torrent.TorrentSpec, bt *BTServer, localPath string) (*Tor
 		}
 	}
 
-	if tor := bt.GetTorrent(spec.InfoHash); tor != nil {
-		if tor.LocalPath == localPath {
-			return tor, nil
-		}
+	loaded := bt.GetTorrent(spec.InfoHash)
+	if loaded != nil && loaded.LocalPath != localPath {
 		return nil, fmt.Errorf("torrent %s is already loaded with a different storage, drop it first",
 			spec.InfoHash.HexString())
 	}
@@ -143,7 +141,7 @@ func NewTorrent(spec *torrent.TorrentSpec, bt *BTServer, localPath string) (*Tor
 	}
 
 	var fstor *filestor.Storage
-	if localPath != "" {
+	if localPath != "" && loaded == nil {
 		var err error
 		fstor, err = prepareLocalStorage(spec, localPath)
 		if err != nil {
@@ -154,7 +152,7 @@ func NewTorrent(spec *torrent.TorrentSpec, bt *BTServer, localPath string) (*Tor
 
 	goTorrent, _, err := bt.client.AddTorrentSpec(spec)
 	if err != nil {
-		if localPath != "" && goTorrent != nil {
+		if fstor != nil && goTorrent != nil {
 			goTorrent.Drop()
 		}
 		return nil, err
@@ -200,9 +198,7 @@ func (t *Torrent) WaitInfo() bool {
 	select {
 	case <-t.Torrent.GotInfo():
 		if t.isLocal() {
-			if t.fstor != nil {
-				t.lstor = t.fstor.Opened(t.Hash())
-			}
+			t.lstor = t.fstor.Opened(t.Hash())
 			return true
 		}
 		if t.bt != nil && t.bt.storage != nil {
@@ -211,10 +207,14 @@ func (t *Torrent) WaitInfo() bool {
 				t.cache.SetTorrent(t.Torrent)
 			}
 		}
-		if peerSource != nil {
-			if peers := peerSource(t.Hash()); len(peers) > 0 {
-				t.Torrent.AddPeers(peers)
-			}
+		if source := peerSource; source != nil {
+			tor := t.Torrent
+			hash := t.Hash()
+			go func() {
+				if peers := source(hash); len(peers) > 0 {
+					tor.AddPeers(peers)
+				}
+			}()
 		}
 		return true
 	case <-t.closed:
@@ -323,7 +323,7 @@ func (t *Torrent) updateRA() {
 }
 
 func (t *Torrent) isLocal() bool {
-	return t.LocalPath != ""
+	return t.fstor != nil
 }
 
 func (t *Torrent) ActiveReaders() int {
@@ -389,10 +389,10 @@ func (t *Torrent) CloseReader(reader Reader) {
 	if reader == nil {
 		return
 	}
-	if t.isLocal() {
-		reader.Close()
-	} else if r, ok := reader.(*torrstor.Reader); ok && t.cache != nil {
+	if r, ok := reader.(*torrstor.Reader); ok && t.cache != nil {
 		t.cache.CloseReader(r)
+	} else {
+		reader.Close()
 	}
 	t.AddExpiredTime(time.Second * time.Duration(settings.BTsets.TorrentDisconnectTimeout))
 }
