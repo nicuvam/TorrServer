@@ -10,6 +10,7 @@ import (
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/metainfo"
 
+	"server/log"
 	"server/qbit"
 	"server/settings"
 	"server/torr"
@@ -84,47 +85,121 @@ func (s *service) tick(stop chan struct{}) {
 	s.refreshSnapshot()
 	snapshot := s.snapshotData()
 
+	s.liftRecategorized(snapshot)
+	s.syncCategories(stop, records, snapshot)
 	if cfg.AutoLocal {
 		s.runFlips(stop, client, records, snapshot)
 	}
 	if cfg.AutoImport {
 		s.runImport(stop, client, records, snapshot)
 	}
+	s.runMirrorRemovals(stop, records, snapshot)
 	s.drainDrops(stop, listRecords())
 }
 
 func (s *service) hasWork(cfg settings.QBitConfig, records []torrentRecord) bool {
-	if cfg.AutoImport || s.demandRecent() || s.hasPendingDrops() {
-		return true
-	}
-	if !cfg.AutoLocal {
-		return false
-	}
-	for _, record := range records {
-		if record.LocalPath == "" {
-			return true
-		}
-	}
-	return false
+	return cfg.AutoImport || len(records) > 0 || s.demandRecent() || s.hasPendingDrops()
 }
 
-func (s *service) runImport(stop chan struct{}, client clientAPI, records []torrentRecord, snapshot map[string]qbit.TorrentInfo) {
+func (s *service) liftRecategorized(snapshot map[string]qbit.TorrentInfo) {
+	for hash, info := range snapshot {
+		remembered, tombstoned := s.ignored.rememberedCategory(hash)
+		if tombstoned && remembered != "" && mirroredCategory(info) != remembered {
+			s.ignored.remove(hash)
+		}
+	}
+}
+
+func (s *service) liftMirrored(snapshot map[string]qbit.TorrentInfo) {
+	for hash, info := range snapshot {
+		if mirroredCategory(info) != "" && s.ignored.contains(hash) {
+			s.ignored.remove(hash)
+		}
+	}
+}
+
+func (s *service) syncCategories(stop chan struct{}, records []torrentRecord, snapshot map[string]qbit.TorrentInfo) {
+	for _, record := range records {
+		if stopping(stop) {
+			return
+		}
+		category := mirroredCategory(snapshot[record.Hash])
+		if category == "" || category == record.Category || !s.imported.contains(record.Hash) {
+			continue
+		}
+		if err := setCategory(record.Hash, category); err != nil {
+			log.TLogln("qbittorrent category sync:", record.Hash, err)
+		}
+	}
+}
+
+func (s *service) runMirrorRemovals(stop chan struct{}, records []torrentRecord, snapshot map[string]qbit.TorrentInfo) {
+	for _, record := range records {
+		if stopping(stop) {
+			return
+		}
+		info, present := snapshot[record.Hash]
+		if !present || mirroredCategory(info) != "" {
+			continue
+		}
+		if !s.imported.contains(record.Hash) {
+			continue
+		}
+		if record.Live && record.ActiveReaders > 0 {
+			continue
+		}
+		removeTorrent(record.Hash)
+		s.imported.remove(record.Hash)
+		s.clearError(record.Hash)
+	}
+}
+
+func ImportNow() (int, error) {
+	return svc.importNow()
+}
+
+func (s *service) importNow() (int, error) {
 	if settings.ReadOnly {
-		s.logProblem(errors.New("read-only DB mode, auto import disabled"))
-		return
+		return 0, errors.New("read-only DB mode, import disabled")
 	}
 	if !engineReady() {
-		return
+		return 0, errors.New("torrent engine is not ready")
 	}
+
+	client, err := s.acquire()
+	if err != nil {
+		return 0, err
+	}
+
+	s.refreshSnapshot()
+	snapshot := s.snapshotData()
+	s.liftMirrored(snapshot)
+
+	return s.runImport(s.stopSignal(), client, listRecords(), snapshot)
+}
+
+func (s *service) runImport(stop chan struct{}, client clientAPI, records []torrentRecord, snapshot map[string]qbit.TorrentInfo) (int, error) {
+	if settings.ReadOnly {
+		s.logProblem(errors.New("read-only DB mode, auto import disabled"))
+		return 0, nil
+	}
+	if !engineReady() {
+		return 0, nil
+	}
+
+	s.importMu.Lock()
+	defer s.importMu.Unlock()
 
 	known := make(map[string]bool, len(records))
 	for _, record := range records {
 		known[record.Hash] = true
 	}
 
+	imported := 0
+	var failure error
 	for hash, info := range snapshot {
 		if stopping(stop) {
-			return
+			return imported, failure
 		}
 		category := strings.ToLower(strings.TrimSpace(info.Category))
 		if !isMirroredCategory(category) || known[hash] || s.ignored.contains(hash) {
@@ -137,13 +212,19 @@ func (s *service) runImport(stop chan struct{}, client clientAPI, records []torr
 			if errors.Is(err, errMetadataNotReady) {
 				continue
 			}
+			if failure == nil {
+				failure = err
+			}
 			s.setError(hash, err)
 			s.retryFailed(importScope + hash)
 			continue
 		}
 		s.retrySucceeded(importScope + hash)
 		s.clearError(hash)
+		s.imported.add(hash)
+		imported++
 	}
+	return imported, failure
 }
 
 func (s *service) importTorrent(client clientAPI, hash, category string) error {

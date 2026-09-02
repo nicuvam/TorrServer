@@ -161,6 +161,23 @@ func SetTorrent(hashHex, title, poster, category string, data string) *Torrent {
 	}
 }
 
+func SetCategory(hashHex string, category string) error {
+	if sets.ReadOnly {
+		return errors.New("read-only DB mode")
+	}
+	hash := metainfo.NewHashFromHex(hashHex)
+	torrDb := GetTorrentDB(hash)
+	if torrDb == nil {
+		return errors.New("torrent not found in db: " + hashHex)
+	}
+	torrDb.Category = category
+	AddTorrentDB(torrDb)
+	if torr := bts.GetTorrent(hash); torr != nil {
+		torr.Category = category
+	}
+	return nil
+}
+
 func Ready() bool {
 	return bts != nil && bts.client != nil
 }

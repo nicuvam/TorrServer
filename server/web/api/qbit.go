@@ -106,6 +106,27 @@ func qbitCategories(c *gin.Context) {
 	c.JSON(200, gin.H{"success": true})
 }
 
+// qbitImport godoc
+//
+//	@Summary		Import torrents from qBittorrent now
+//	@Description	Runs one import pass over the mirrored qBittorrent categories regardless of the auto import setting.
+//
+//	@Tags			API
+//
+//	@Accept			json
+//	@Produce		json
+//	@Security		BasicAuth
+//	@Success		200
+//	@Router			/qbit/import [post]
+func qbitImport(c *gin.Context) {
+	imported, err := qbitsync.ImportNow()
+	if err != nil {
+		c.JSON(200, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"success": true, "imported": imported})
+}
+
 func qbitServeFile(c *gin.Context, tor *torr.Torrent, indexStr string) bool {
 	if tor == nil || tor.LocalPath != "" || !qbitsync.Enabled() {
 		return false

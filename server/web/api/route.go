@@ -21,6 +21,7 @@ func SetupRoute(route gin.IRouter) {
 	authorized.POST("/torznab/test", torznabTest)
 	authorized.POST("/qbit/test", qbitTest)
 	authorized.POST("/qbit/categories", qbitCategories)
+	authorized.POST("/qbit/import", qbitImport)
 
 	authorized.POST("/torrents", torrents)
 

@@ -41,11 +41,13 @@ var (
 	newClient = func(baseURL, username, password string) clientAPI {
 		return qbit.New(baseURL, username, password)
 	}
-	listRecords  = torrentRecords
-	engineReady  = torr.Ready
-	setLocalPath = torr.SetLocalPath
-	dropTorrent  = torr.DropTorrent
-	importViaAdd = importTorrentViaAdd
+	listRecords   = torrentRecords
+	engineReady   = torr.Ready
+	setLocalPath  = torr.SetLocalPath
+	setCategory   = torr.SetCategory
+	dropTorrent   = torr.DropTorrent
+	removeTorrent = torr.RemTorrent
+	importViaAdd  = importTorrentViaAdd
 )
 
 type retryState struct {
@@ -74,7 +76,10 @@ type service struct {
 	files        map[string]filesEntry
 	filesLoading map[string]bool
 
-	ignored noAutomationSet
+	ignored  noAutomationSet
+	imported importedSet
+
+	importMu sync.Mutex
 
 	prefs        qbit.Preferences
 	prefsAt      time.Time
@@ -142,6 +147,15 @@ func (s *service) stop() {
 	}
 	close(stop)
 	<-done
+}
+
+func (s *service) stopSignal() chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopChan != nil {
+		return s.stopChan
+	}
+	return make(chan struct{})
 }
 
 func fingerprint(cfg settings.QBitConfig) string {
