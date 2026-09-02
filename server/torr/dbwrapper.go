@@ -17,6 +17,17 @@ type tsFiles struct {
 	} `json:"TorrServer"`
 }
 
+func FileStatsFromData(data string) []*state.TorrentFileStat {
+	if data == "" {
+		return nil
+	}
+	var files tsFiles
+	if json.Unmarshal([]byte(data), &files) != nil {
+		return nil
+	}
+	return files.TorrServer.Files
+}
+
 func persistableSpec(torr *Torrent) *torrent.TorrentSpec {
 	if torr.TorrentSpec == nil {
 		return nil

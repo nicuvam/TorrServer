@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -191,17 +190,7 @@ func torrentFileStats(tor *torr.Torrent) []*state.TorrentFileStat {
 	if stats := tor.Status().FileStats; len(stats) > 0 {
 		return stats
 	}
-	var stored tsFiles
-	if json.Unmarshal([]byte(tor.Data), &stored) != nil {
-		return nil
-	}
-	return stored.TorrServer.Files
-}
-
-type tsFiles struct {
-	TorrServer struct {
-		Files []*state.TorrentFileStat `json:"Files"`
-	} `json:"TorrServer"`
+	return torr.FileStatsFromData(tor.Data)
 }
 
 func fileStatIndex(stats []*state.TorrentFileStat, indexStr string) int {

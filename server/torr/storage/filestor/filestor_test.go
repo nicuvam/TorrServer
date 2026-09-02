@@ -205,7 +205,7 @@ func TestResolveRejectsMissingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := PreValidate(info, root)
+	_, err := Resolve(info, root)
 	var missing *MissingFileError
 	if !errors.As(err, &missing) {
 		t.Fatalf("got %v, want MissingFileError", err)
@@ -223,7 +223,7 @@ func TestResolveRejectsSizeMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := PreValidate(info, root)
+	_, err := Resolve(info, root)
 	var mismatch *SizeMismatchError
 	if !errors.As(err, &mismatch) {
 		t.Fatalf("got %v, want SizeMismatchError", err)
@@ -244,7 +244,7 @@ func TestResolveRejectsIrregularFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := PreValidate(info, root)
+	_, err := Resolve(info, root)
 	var irregular *IrregularFileError
 	if !errors.As(err, &irregular) {
 		t.Fatalf("got %v, want IrregularFileError", err)
@@ -263,7 +263,7 @@ func TestResolveRejectsPathEscape(t *testing.T) {
 			PieceLength: 4,
 			Files:       []metainfo.FileInfo{{Path: path, Length: 4}},
 		})
-		_, err := PreValidate(info, t.TempDir())
+		_, err := Resolve(info, t.TempDir())
 		var escape *PathEscapeError
 		if !errors.As(err, &escape) {
 			t.Fatalf("path %v: got %v, want PathEscapeError", path, err)
@@ -331,9 +331,6 @@ func TestWriteAtDiscardsAndLeavesDiskUntouched(t *testing.T) {
 	n, err := piece.WriteAt(garbage, 0)
 	if n != len(garbage) || err != nil {
 		t.Fatalf("write: got (%d, %v), want (%d, nil)", n, err, len(garbage))
-	}
-	if got := tor.discarded.Load(); got != int64(len(garbage)) {
-		t.Fatalf("discarded: got %d, want %d", got, len(garbage))
 	}
 
 	for full, content := range before {

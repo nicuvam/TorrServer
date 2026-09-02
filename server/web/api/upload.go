@@ -1,8 +1,10 @@
 package api
 
 import (
+	"errors"
 	"mime/multipart"
 	"net/http"
+	"strings"
 
 	"server/log"
 	set "server/settings"
@@ -71,6 +73,7 @@ func torrentUpload(c *gin.Context) {
 	}
 
 	var stats []*state.TorrentStatus
+	var localErrs []string
 	for _, fh := range files {
 		log.TLogln("add .torrent", fh.Filename)
 
@@ -91,8 +94,7 @@ func torrentUpload(c *gin.Context) {
 		if err != nil {
 			log.TLogln("error upload torrent:", err)
 			if localPath != "" {
-				abortWithJSONError(c, http.StatusBadRequest, err)
-				return
+				localErrs = append(localErrs, err.Error())
 			}
 			continue
 		}
@@ -120,6 +122,11 @@ func torrentUpload(c *gin.Context) {
 		}(tor)
 
 		stats = append(stats, tor.Status())
+	}
+
+	if len(localErrs) > 0 {
+		abortWithJSONError(c, http.StatusBadRequest, errors.New(strings.Join(localErrs, "; ")))
+		return
 	}
 
 	if len(stats) == 1 {

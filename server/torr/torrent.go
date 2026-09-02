@@ -68,9 +68,9 @@ type Torrent struct {
 	progressTicker *time.Ticker
 }
 
-var peerSource func(metainfo.Hash) []torrent.Peer
+var peerSource func() []torrent.Peer
 
-func SetPeerSource(fn func(metainfo.Hash) []torrent.Peer) {
+func SetPeerSource(fn func() []torrent.Peer) {
 	peerSource = fn
 }
 
@@ -95,7 +95,7 @@ func prepareLocalStorage(spec *torrent.TorrentSpec, localPath string) (*filestor
 		if err != nil {
 			return nil, err
 		}
-		if _, err := filestor.PreValidate(&info, localPath); err != nil {
+		if _, err := filestor.Resolve(&info, localPath); err != nil {
 			return nil, err
 		}
 	}
@@ -209,9 +209,8 @@ func (t *Torrent) WaitInfo() bool {
 		}
 		if source := peerSource; source != nil {
 			tor := t.Torrent
-			hash := t.Hash()
 			go func() {
-				if peers := source(hash); len(peers) > 0 {
+				if peers := source(); len(peers) > 0 {
 					tor.AddPeers(peers)
 				}
 			}()

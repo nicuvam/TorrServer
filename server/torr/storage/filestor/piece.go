@@ -30,7 +30,7 @@ func (p *Piece) ReadAt(b []byte, off int64) (int, error) {
 }
 
 func (p *Piece) WriteAt(b []byte, off int64) (int, error) {
-	p.torrent.discardWrite(len(b))
+	p.torrent.discardWrite()
 	return len(b), nil
 }
 

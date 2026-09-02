@@ -132,10 +132,6 @@ func Resolve(info *metainfo.Info, root string) (*Layout, error) {
 	return nil, &ResolveError{Root: root, Attempts: attempts}
 }
 
-func PreValidate(info *metainfo.Info, root string) (*Layout, error) {
-	return Resolve(info, root)
-}
-
 func buildDirLayout(info *metainfo.Info, base string) (*Layout, error) {
 	files := make([]File, 0, len(info.Files))
 	for _, fi := range info.UpvertedFiles() {

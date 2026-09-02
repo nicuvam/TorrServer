@@ -6,7 +6,6 @@ import (
 	"os"
 	"sort"
 	"sync"
-	"sync/atomic"
 
 	"github.com/anacrolix/torrent/metainfo"
 	ts "github.com/anacrolix/torrent/storage"
@@ -29,8 +28,7 @@ type Torrent struct {
 	handles map[int]*os.File
 	closed  bool
 
-	discarded atomic.Int64
-	warnOnce  sync.Once
+	warnOnce sync.Once
 }
 
 func newTorrent(storage *Storage, hash metainfo.Hash, layout *Layout) *Torrent {
@@ -149,8 +147,7 @@ func (t *Torrent) handle(index int) (*os.File, error) {
 	return opened, nil
 }
 
-func (t *Torrent) discardWrite(n int) {
-	t.discarded.Add(int64(n))
+func (t *Torrent) discardWrite() {
 	t.warnOnce.Do(func() {
 		log.Printf("filestor: discarding writes for torrent %s backed by %s", t.hash.HexString(), t.layout.Base)
 	})

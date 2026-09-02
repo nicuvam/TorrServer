@@ -213,6 +213,15 @@ func SetBTSets(sets *BTSets) {
 	tdb.Set("Settings", "BitTorr", buf)
 }
 
+func defaultQBitConfig() QBitConfig {
+	return QBitConfig{
+		Tags:               "torrserver",
+		SequentialDownload: true,
+		FirstLastPiecePrio: true,
+		AutoLocal:          true,
+	}
+}
+
 func SetDefaultConfig() {
 	sets := new(BTSets)
 	sets.CacheSize = 64 * 1024 * 1024 // 64 MB
@@ -229,12 +238,7 @@ func SetDefaultConfig() {
 	sets.EnableLPD = true
 	sets.LPDIPv6 = false
 	sets.EnableBonjour = true
-	sets.QBitSettings = QBitConfig{
-		Tags:               "torrserver",
-		SequentialDownload: true,
-		FirstLastPiecePrio: true,
-		AutoLocal:          true,
-	}
+	sets.QBitSettings = defaultQBitConfig()
 	// Set default TMDB settings
 	sets.TMDBSettings = TMDBConfig{
 		APIKey:     DefaultTMDBAPIKey,
@@ -277,12 +281,7 @@ func loadBTSets() {
 					BTsets.EnableBonjour = true
 				}
 				if _, ok := raw["QBitSettings"]; !ok {
-					BTsets.QBitSettings = QBitConfig{
-						Tags:               "torrserver",
-						SequentialDownload: true,
-						FirstLastPiecePrio: true,
-						AutoLocal:          true,
-					}
+					BTsets.QBitSettings = defaultQBitConfig()
 				}
 			}
 			// Upgrade older configs that never had tracker list fields.
