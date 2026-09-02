@@ -27,9 +27,8 @@ func (s *service) enrich(list []*state.TorrentStatus) {
 		if info, ok := snapshot[hash]; ok {
 			status.QBitState = info.State
 			status.QBitProgress = info.Progress
-			status.QBitDlSpeed = info.DlSpeed
+			status.QBitDownloadSpeed = info.DlSpeed
 			status.QBitEta = info.ETA
-			status.QBitCompletedOn = info.CompletionOn
 			if unreachable {
 				status.QBitError = unreachableMessage
 			}

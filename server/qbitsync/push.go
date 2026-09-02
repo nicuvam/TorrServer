@@ -23,7 +23,7 @@ func (s *service) push(hashHex string) error {
 	}
 
 	hash := strings.ToLower(strings.TrimSpace(hashHex))
-	tor := torr.GetTorrent(hash)
+	tor := readTorrent(hash)
 	if tor == nil {
 		return fmt.Errorf("qbittorrent: torrent not found: %s", hash)
 	}
@@ -54,6 +54,18 @@ func (s *service) push(hashHex string) error {
 	s.ignored.remove(hash)
 	s.invalidateSnapshot()
 	return nil
+}
+
+func readTorrent(hashHex string) *torr.Torrent {
+	hash := metainfo.NewHashFromHex(hashHex)
+	if torr.HasLiveTorrent(hash) {
+		for _, tor := range torr.ListTorrent() {
+			if tor != nil && tor.TorrentSpec != nil && tor.TorrentSpec.InfoHash == hash {
+				return tor
+			}
+		}
+	}
+	return torr.GetTorrentDB(hash)
 }
 
 func torrentFile(tor *torr.Torrent) []byte {

@@ -151,20 +151,6 @@ func loadDB() {
 	utils2.FreeOSMemGC()
 }
 
-func FindByHash(hashHex string) *models.TorrentDetails {
-	if hashHex == "" {
-		return nil
-	}
-	mu.RLock()
-	defer mu.RUnlock()
-	for _, torr := range torrs {
-		if strings.EqualFold(torr.Hash, hashHex) {
-			return torr
-		}
-	}
-	return nil
-}
-
 func Search(query string) []*models.TorrentDetails {
 	if !settings.BTsets.EnableRutorSearch {
 		return nil

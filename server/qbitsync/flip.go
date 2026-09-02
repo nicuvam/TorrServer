@@ -79,7 +79,7 @@ func (s *service) flip(record torrentRecord, info qbit.TorrentInfo) error {
 	if local == "" {
 		return fmt.Errorf("qbittorrent: no content path for %s", record.Hash)
 	}
-	if _, err = filestor.PreValidate(&meta, local); err != nil {
+	if _, err = filestor.Resolve(&meta, local); err != nil {
 		log.TLogln("qbittorrent flip validation:", record.Hash, err)
 		return fmt.Errorf("local files not found at %s", local)
 	}

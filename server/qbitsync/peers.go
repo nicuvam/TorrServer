@@ -7,12 +7,11 @@ import (
 	"time"
 
 	"github.com/anacrolix/torrent"
-	"github.com/anacrolix/torrent/metainfo"
 )
 
 const prefsTTL = 5 * time.Minute
 
-func PeerSource(hash metainfo.Hash) []torrent.Peer {
+func PeerSource() []torrent.Peer {
 	return svc.peers()
 }
 

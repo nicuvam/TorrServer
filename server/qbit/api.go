@@ -19,12 +19,8 @@ const (
 	exportPath         = "api/v2/torrents/export"
 	filePrioPath       = "api/v2/torrents/filePrio"
 	deletePath         = "api/v2/torrents/delete"
-	recheckPath        = "api/v2/torrents/recheck"
-	categoriesPath     = "api/v2/torrents/categories"
 	createCategoryPath = "api/v2/torrents/createCategory"
-	setCategoryPath    = "api/v2/torrents/setCategory"
 	preferencesPath    = "api/v2/app/preferences"
-	transferInfoPath   = "api/v2/transfer/info"
 
 	formContentType = "application/x-www-form-urlencoded"
 	torrentPartName = "torrents"
@@ -147,25 +143,6 @@ func (c *Client) Delete(hashes []string, deleteFiles bool) error {
 	return c.postForm(deletePath, form)
 }
 
-func (c *Client) Recheck(hashes []string) error {
-	form := url.Values{}
-	form.Set("hashes", strings.Join(hashes, "|"))
-	return c.postForm(recheckPath, form)
-}
-
-func (c *Client) Categories() (map[string]Category, error) {
-	data, err := c.do(http.MethodGet, categoriesPath, "", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	categories := make(map[string]Category)
-	if err = json.Unmarshal(data, &categories); err != nil {
-		return nil, fmt.Errorf("qbittorrent: invalid categories response: %v", err)
-	}
-	return categories, nil
-}
-
 func (c *Client) CreateCategory(name, savePath string) error {
 	form := url.Values{}
 	form.Set("category", name)
@@ -173,13 +150,6 @@ func (c *Client) CreateCategory(name, savePath string) error {
 		form.Set("savePath", savePath)
 	}
 	return c.postForm(createCategoryPath, form)
-}
-
-func (c *Client) SetCategory(hashes []string, category string) error {
-	form := url.Values{}
-	form.Set("hashes", strings.Join(hashes, "|"))
-	form.Set("category", category)
-	return c.postForm(setCategoryPath, form)
 }
 
 func (c *Client) Preferences() (Preferences, error) {
@@ -193,19 +163,6 @@ func (c *Client) Preferences() (Preferences, error) {
 		return prefs, fmt.Errorf("qbittorrent: invalid preferences response: %v", err)
 	}
 	return prefs, nil
-}
-
-func (c *Client) TransferInfo() (TransferInfo, error) {
-	var transfer TransferInfo
-
-	data, err := c.do(http.MethodGet, transferInfoPath, "", nil)
-	if err != nil {
-		return transfer, err
-	}
-	if err = json.Unmarshal(data, &transfer); err != nil {
-		return transfer, fmt.Errorf("qbittorrent: invalid transfer response: %v", err)
-	}
-	return transfer, nil
 }
 
 func (c *Client) postForm(path string, form url.Values) error {

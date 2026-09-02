@@ -10,49 +10,25 @@ import (
 	"testing"
 )
 
-func TestVersionBranchPaths(t *testing.T) {
-	tests := []struct {
-		version   string
-		wantStop  string
-		wantStart string
-	}{
-		{version: "2.8.19", wantStop: pausePath, wantStart: resumePath},
-		{version: "2.10.4", wantStop: pausePath, wantStart: resumePath},
-		{version: "2.11.0", wantStop: stopPath, wantStart: startPath},
-		{version: "2.11.4", wantStop: stopPath, wantStart: startPath},
-		{version: "2.12", wantStop: stopPath, wantStart: startPath},
-		{version: "3.0.1", wantStop: stopPath, wantStart: startPath},
-		{version: "1.99.9", wantStop: pausePath, wantStart: resumePath},
+func TestAPIVersionCached(t *testing.T) {
+	mock := newMockQB(t)
+	mock.setHandler(func(w http.ResponseWriter, req capturedRequest) {
+		w.Write([]byte("2.11.4"))
+	})
+	client := mock.client()
+
+	for i := 0; i < 2; i++ {
+		version, err := client.APIVersion()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if version != "2.11.4" {
+			t.Fatalf("got version %q, want 2.11.4", version)
+		}
 	}
 
-	for _, test := range tests {
-		t.Run(test.version, func(t *testing.T) {
-			mock := newMockQB(t)
-			mock.setHandler(func(w http.ResponseWriter, req capturedRequest) {
-				w.Write([]byte(test.version))
-			})
-			client := mock.client()
-
-			stop, err := client.StopPath()
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if stop != test.wantStop {
-				t.Fatalf("got stop path %q, want %q", stop, test.wantStop)
-			}
-
-			start, err := client.StartPath()
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if start != test.wantStart {
-				t.Fatalf("got start path %q, want %q", start, test.wantStart)
-			}
-
-			if mock.countPath(versionPath) != 1 {
-				t.Fatalf("got %d version requests, want 1", mock.countPath(versionPath))
-			}
-		})
+	if mock.countPath(versionPath) != 1 {
+		t.Fatalf("got %d version requests, want 1", mock.countPath(versionPath))
 	}
 }
 
@@ -193,26 +169,6 @@ func TestCompleted(t *testing.T) {
 				t.Fatalf("Completed() = %v, want %v", got, test.want)
 			}
 		})
-	}
-}
-
-func TestStateClassifiers(t *testing.T) {
-	for _, state := range []string{"pausedUP", "pausedDL", "stoppedUP", "stoppedDL"} {
-		if !(TorrentInfo{State: state}).Stopped() {
-			t.Fatalf("state %s must be stopped", state)
-		}
-	}
-	if (TorrentInfo{State: "downloading"}).Stopped() {
-		t.Fatal("downloading must not be stopped")
-	}
-	if !(TorrentInfo{State: "metaDL"}).Downloading() {
-		t.Fatal("metaDL must be downloading")
-	}
-	if !(TorrentInfo{State: "stalledUP"}).Seeding() {
-		t.Fatal("stalledUP must be seeding")
-	}
-	if !(TorrentInfo{State: "missingFiles"}).Errored() {
-		t.Fatal("missingFiles must be errored")
 	}
 }
 

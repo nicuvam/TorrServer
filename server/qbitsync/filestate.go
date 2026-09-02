@@ -19,14 +19,6 @@ const (
 
 var errFilesNotReady = errors.New("qbittorrent: file list not cached yet")
 
-func CompleteFilePath(hashHex string, fileIndex int) (string, bool) {
-	return svc.completeFilePath(hashHex, fileIndex)
-}
-
-func PrioritizeFile(hashHex string, fileIndex int) {
-	svc.prioritizeFile(hashHex, fileIndex)
-}
-
 func CompleteFilePathByName(hashHex, name string) (string, bool) {
 	index, ok := svc.fileIndexByName(hashHex, name)
 	if !ok {

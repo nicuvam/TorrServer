@@ -320,7 +320,6 @@ func writeFiles(t *testing.T, base string, files []metainfo.FileInfo) {
 func completedInfo(hash, contentPath, savePath, category string) qbit.TorrentInfo {
 	return qbit.TorrentInfo{
 		Hash:         hash,
-		Name:         "release",
 		State:        "stalledUP",
 		Category:     category,
 		Progress:     1,
