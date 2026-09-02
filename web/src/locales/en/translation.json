@@ -362,7 +362,7 @@
     "AutoLocal": "Auto-switch to Local Files",
     "AutoLocalHint": "Automatically play from disk once qBittorrent finishes downloading a torrent",
     "AutoImport": "Auto-import from qBittorrent",
-    "AutoImportHint": "Mirrors the Movies/TV/Music/Other categories: follows category changes in qBittorrent, and removes auto-imported torrents from TorrServer when moved out of these categories (files are kept)",
+    "AutoImportHint": "Categories are kept in sync both ways between TorrServer and qBittorrent. A torrent moved out of Movies/TV/Music/Other in qBittorrent, or deleted there, is removed from TorrServer, but its files are kept",
     "PathMaps": "Path Mappings",
     "PathMapsHint": "Map qBittorrent's paths to the paths TorrServer sees on this host, when they differ",
     "From": "From (qBittorrent path)",

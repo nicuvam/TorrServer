@@ -345,7 +345,7 @@
     "AutoLocal": "Basculer automatiquement vers les fichiers locaux",
     "AutoLocalHint": "Lit automatiquement depuis le disque une fois que qBittorrent a terminé de télécharger un torrent",
     "AutoImport": "Importation automatique depuis qBittorrent",
-    "AutoImportHint": "Reflète les catégories Films/Séries/Musique/Autre : suit les changements de catégorie dans qBittorrent et supprime de TorrServer les torrents importés automatiquement déplacés hors de ces catégories (les fichiers sont conservés)",
+    "AutoImportHint": "Les catégories sont synchronisées dans les deux sens entre TorrServer et qBittorrent. Un torrent déplacé hors des catégories Films/Séries/Musique/Autre dans qBittorrent, ou supprimé là-bas, est supprimé de TorrServer, mais ses fichiers sont conservés",
     "PathMaps": "Correspondances de chemins",
     "PathMapsHint": "Faites correspondre les chemins de qBittorrent aux chemins que TorrServer voit sur cet hôte, lorsqu'ils diffèrent",
     "From": "De (chemin qBittorrent)",

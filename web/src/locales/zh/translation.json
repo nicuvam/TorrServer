@@ -345,7 +345,7 @@
     "AutoLocal": "自动切换为本地文件",
     "AutoLocalHint": "qBittorrent 下载完成后自动从磁盘播放",
     "AutoImport": "自动从 qBittorrent 导入",
-    "AutoImportHint": "镜像电影/剧集/音乐/其他这四个分类：跟随 qBittorrent 中的分类变更，并将已移出这些分类的自动导入种子从 TorrServer 中移除（文件会保留）",
+    "AutoImportHint": "分类会在 TorrServer 与 qBittorrent 之间双向同步。在 qBittorrent 中被移出电影/剧集/音乐/其他分类，或在那里被删除的种子，会从 TorrServer 中移除，但文件会保留",
     "PathMaps": "路径映射",
     "PathMapsHint": "当路径不同时，将 qBittorrent 的路径映射为 TorrServer 在此主机上看到的路径",
     "From": "源路径（qBittorrent）",
