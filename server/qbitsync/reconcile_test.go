@@ -223,6 +223,7 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 	previousLocal := setLocalPath
 	previousDrop := dropTorrent
 	previousImport := importViaAdd
+	previousReady := engineReady
 	previousIgnoreList := listNoAutomation
 	previousIgnoreStore := storeNoAutomation
 	previousIgnoreRemove := removeNoAutomation
@@ -234,6 +235,7 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 		setLocalPath = previousLocal
 		dropTorrent = previousDrop
 		importViaAdd = previousImport
+		engineReady = previousReady
 		listNoAutomation = previousIgnoreList
 		storeNoAutomation = previousIgnoreStore
 		removeNoAutomation = previousIgnoreRemove
@@ -257,6 +259,7 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 		return nil
 	}
 	dropTorrent = func(hash string) { env.dropped = append(env.dropped, hash) }
+	engineReady = func() bool { return true }
 	importViaAdd = func(spec *torrent.TorrentSpec, category string) error {
 		env.imported = append(env.imported, importedAdd{spec: spec, category: category})
 		return nil
@@ -592,6 +595,33 @@ func TestAutoImportSkipsForgottenHash(t *testing.T) {
 	env.tick()
 	if len(env.imported) != 1 {
 		t.Fatalf("imported %d torrents after unforget, want 1", len(env.imported))
+	}
+}
+
+func TestAutoImportWaitsForEngine(t *testing.T) {
+	env := newTestEnv(t, importConfig())
+
+	files := []metainfo.FileInfo{{Path: []string{"ep.mkv"}, Length: 32}}
+	info := testInfo("pending", files)
+	hash := metainfo.HashBytes(testInfoBytes(t, info)).HexString()
+	env.client.torrents[hash] = completedInfo(hash, "/data/pending", "/data", "tv")
+	env.client.exports[hash] = testTorrentFile(t, info)
+
+	ready := false
+	engineReady = func() bool { return ready }
+
+	env.tick()
+	if len(env.imported) != 0 || env.client.exportCalls != 0 {
+		t.Fatalf("import attempted while engine not ready: imported=%d exports=%d", len(env.imported), env.client.exportCalls)
+	}
+	if _, blocked := env.service.errorMap()[hash]; blocked {
+		t.Fatal("engine not ready was recorded as a torrent error")
+	}
+
+	ready = true
+	env.tick()
+	if len(env.imported) != 1 {
+		t.Fatalf("imported %d torrents once engine ready, want 1", len(env.imported))
 	}
 }
 

@@ -42,6 +42,7 @@ var (
 		return qbit.New(baseURL, username, password)
 	}
 	listRecords  = torrentRecords
+	engineReady  = torr.Ready
 	setLocalPath = torr.SetLocalPath
 	dropTorrent  = torr.DropTorrent
 	importViaAdd = importTorrentViaAdd

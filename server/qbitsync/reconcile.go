@@ -111,6 +111,9 @@ func (s *service) runImport(stop chan struct{}, client clientAPI, records []torr
 		s.logProblem(errors.New("read-only DB mode, auto import disabled"))
 		return
 	}
+	if !engineReady() {
+		return
+	}
 
 	known := make(map[string]bool, len(records))
 	for _, record := range records {

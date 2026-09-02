@@ -161,6 +161,10 @@ func SetTorrent(hashHex, title, poster, category string, data string) *Torrent {
 	}
 }
 
+func Ready() bool {
+	return bts != nil && bts.client != nil
+}
+
 func HasLiveTorrent(hash metainfo.Hash) bool {
 	return bts != nil && bts.GetTorrent(hash) != nil
 }
