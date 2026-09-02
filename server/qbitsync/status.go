@@ -7,12 +7,17 @@ import (
 )
 
 func Enrich(list []*state.TorrentStatus) {
+	svc.enrich(list)
+}
+
+func (s *service) enrich(list []*state.TorrentStatus) {
 	if len(list) == 0 || !Enabled() {
 		return
 	}
 
-	snapshot := svc.snapshotView(true)
-	errors := svc.errorMap()
+	snapshot := s.snapshotView(true)
+	errors := s.errorMap()
+	unreachable := s.snapshotUnreachable()
 
 	for _, status := range list {
 		if status == nil {
@@ -25,6 +30,9 @@ func Enrich(list []*state.TorrentStatus) {
 			status.QBitDlSpeed = info.DlSpeed
 			status.QBitEta = info.ETA
 			status.QBitCompletedOn = info.CompletionOn
+			if unreachable {
+				status.QBitError = unreachableMessage
+			}
 		}
 		if message, ok := errors[hash]; ok {
 			status.QBitError = message

@@ -2,6 +2,7 @@ package qbitsync
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 	"server/qbit"
 	"server/settings"
+	"server/torr/state"
 )
 
 type fakeClient struct {
@@ -33,6 +35,7 @@ type fakeClient struct {
 	prefsCalls  int
 
 	exportErr error
+	infoErr   error
 }
 
 func newFakeClient() *fakeClient {
@@ -55,6 +58,9 @@ func (c *fakeClient) Info(hashes []string) ([]qbit.TorrentInfo, error) {
 	defer c.mu.Unlock()
 	if len(hashes) == 0 {
 		c.listCalls++
+		if c.infoErr != nil {
+			return nil, c.infoErr
+		}
 		list := make([]qbit.TorrentInfo, 0, len(c.torrents))
 		for _, info := range c.torrents {
 			list = append(list, info)
@@ -63,6 +69,9 @@ func (c *fakeClient) Info(hashes []string) ([]qbit.TorrentInfo, error) {
 	}
 
 	c.hashCalls++
+	if c.infoErr != nil {
+		return nil, c.infoErr
+	}
 	var list []qbit.TorrentInfo
 	for _, hash := range hashes {
 		if info, ok := c.torrents[hash]; ok {
@@ -112,6 +121,12 @@ func (c *fakeClient) Preferences() (qbit.Preferences, error) {
 	defer c.mu.Unlock()
 	c.prefsCalls++
 	return qbit.Preferences{ListenPort: 6881}, nil
+}
+
+func (c *fakeClient) setInfoErr(err error) {
+	c.mu.Lock()
+	c.infoErr = err
+	c.mu.Unlock()
 }
 
 func (c *fakeClient) awaitPrioCalls(t *testing.T, want int) {
@@ -187,6 +202,12 @@ func (e *testEnv) tick() {
 	e.service.tick(e.running)
 }
 
+func (e *testEnv) enrichOne(hash string) *state.TorrentStatus {
+	status := &state.TorrentStatus{Hash: hash}
+	e.service.enrich([]*state.TorrentStatus{status})
+	return status
+}
+
 type importedAdd struct {
 	spec     *torrent.TorrentSpec
 	category string
@@ -202,9 +223,9 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 	previousLocal := setLocalPath
 	previousDrop := dropTorrent
 	previousImport := importViaAdd
-	previousIgnoreList := listIgnored
-	previousIgnoreStore := storeIgnored
-	previousIgnoreRemove := removeIgnored
+	previousIgnoreList := listNoAutomation
+	previousIgnoreStore := storeNoAutomation
+	previousIgnoreRemove := removeNoAutomation
 	t.Cleanup(func() {
 		settings.BTsets = previousSets
 		nowFunc = previousNow
@@ -213,9 +234,9 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 		setLocalPath = previousLocal
 		dropTorrent = previousDrop
 		importViaAdd = previousImport
-		listIgnored = previousIgnoreList
-		storeIgnored = previousIgnoreStore
-		removeIgnored = previousIgnoreRemove
+		listNoAutomation = previousIgnoreList
+		storeNoAutomation = previousIgnoreStore
+		removeNoAutomation = previousIgnoreRemove
 	})
 
 	env := &testEnv{
@@ -240,15 +261,15 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 		env.imported = append(env.imported, importedAdd{spec: spec, category: category})
 		return nil
 	}
-	listIgnored = func() []string {
+	listNoAutomation = func() []string {
 		hashes := make([]string, 0, len(env.ignored))
 		for hash := range env.ignored {
 			hashes = append(hashes, hash)
 		}
 		return hashes
 	}
-	storeIgnored = func(hash string) { env.ignored[hash] = true }
-	removeIgnored = func(hash string) { delete(env.ignored, hash) }
+	storeNoAutomation = func(hash string) { env.ignored[hash] = true }
+	removeNoAutomation = func(hash string) { delete(env.ignored, hash) }
 
 	return env
 }
@@ -327,7 +348,7 @@ func TestTickIdleMakesNoRequests(t *testing.T) {
 	}
 }
 
-func TestFlipRetriesThenGoesDormant(t *testing.T) {
+func TestFlipRetriesThenSleepsUntilDormantCooldown(t *testing.T) {
 	env := newTestEnv(t, enabledConfig())
 
 	info := testInfo("release", []metainfo.FileInfo{{Path: []string{"ep.mkv"}, Length: 32}})
@@ -360,13 +381,104 @@ func TestFlipRetriesThenGoesDormant(t *testing.T) {
 		t.Fatalf("third attempt hash calls = %d, want 3", env.client.hashCalls)
 	}
 
-	env.clock.advance(24 * time.Hour)
+	env.clock.advance(retryCooldown)
 	env.tick()
 	if env.client.hashCalls != 3 {
 		t.Fatalf("dormant tick hash calls = %d, want 3", env.client.hashCalls)
 	}
+
+	env.clock.advance(dormantCooldown)
+	env.tick()
+	if env.client.hashCalls != 4 {
+		t.Fatalf("hash calls after dormant cooldown = %d, want 4", env.client.hashCalls)
+	}
+
+	env.clock.advance(retryCooldown)
+	env.tick()
+	if env.client.hashCalls != 5 {
+		t.Fatalf("hash calls after woken retry = %d, want 5", env.client.hashCalls)
+	}
 	if len(env.local) != 0 {
 		t.Fatalf("local path set for failed flip: %v", env.local)
+	}
+}
+
+func TestFlipSkipsHashWithoutAutomation(t *testing.T) {
+	env := newTestEnv(t, enabledConfig())
+
+	files := []metainfo.FileInfo{{Path: []string{"ep.mkv"}, Length: 32}}
+	info := testInfo("release", files)
+	root := t.TempDir()
+	writeFiles(t, root, files)
+
+	hash := metainfo.HashBytes(testInfoBytes(t, info)).HexString()
+	env.records = []torrentRecord{{Hash: hash, InfoBytes: testInfoBytes(t, info)}}
+	env.client.torrents[hash] = completedInfo(hash, root, filepath.Dir(root), "tv")
+	env.ignored[hash] = true
+
+	env.tick()
+
+	if len(env.local) != 0 {
+		t.Fatalf("flipped a hash excluded from automation: %v", env.local)
+	}
+	if env.client.hashCalls != 0 {
+		t.Fatalf("hash calls = %d, want 0", env.client.hashCalls)
+	}
+}
+
+func TestEnrichReportsUnreachableWhileSnapshotIsStale(t *testing.T) {
+	env := newTestEnv(t, enabledConfig())
+
+	hash := "5555555555555555555555555555555555555555"
+	env.client.torrents[hash] = completedInfo(hash, "/data/release", "/data", "tv")
+	env.service.refreshSnapshot()
+
+	if status := env.enrichOne(hash); status.QBitError != "" {
+		t.Fatalf("fresh snapshot reported %q", status.QBitError)
+	}
+
+	env.client.setInfoErr(errors.New("connection refused"))
+	env.clock.advance(snapshotTTL)
+	env.service.refreshSnapshot()
+
+	if status := env.enrichOne(hash); status.QBitError != "" {
+		t.Fatalf("first failed refresh reported %q", status.QBitError)
+	}
+
+	env.clock.advance(snapshotStaleAfter)
+	env.service.refreshSnapshot()
+
+	status := env.enrichOne(hash)
+	if status.QBitError != unreachableMessage {
+		t.Fatalf("stale snapshot error = %q, want %q", status.QBitError, unreachableMessage)
+	}
+	if status.QBitProgress != 1 || status.QBitState != "stalledUP" {
+		t.Fatalf("stale snapshot values dropped: progress=%v state=%q", status.QBitProgress, status.QBitState)
+	}
+
+	env.client.setInfoErr(nil)
+	env.clock.advance(snapshotTTL)
+	env.service.refreshSnapshot()
+
+	if status := env.enrichOne(hash); status.QBitError != "" {
+		t.Fatalf("successful refresh left error %q", status.QBitError)
+	}
+}
+
+func TestEnrichKeepsPerHashErrorWhileUnreachable(t *testing.T) {
+	env := newTestEnv(t, enabledConfig())
+
+	hash := "6666666666666666666666666666666666666666"
+	env.client.torrents[hash] = completedInfo(hash, "/data/release", "/data", "tv")
+	env.service.refreshSnapshot()
+	env.service.setError(hash, errors.New("local files not found at /data/release"))
+
+	env.client.setInfoErr(errors.New("connection refused"))
+	env.clock.advance(snapshotStaleAfter + snapshotTTL)
+	env.service.refreshSnapshot()
+
+	if status := env.enrichOne(hash); status.QBitError != "local files not found at /data/release" {
+		t.Fatalf("error = %q, want the per-hash message", status.QBitError)
 	}
 }
 

@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	retryAttempts = 3
-	retryCooldown = 5 * time.Minute
-	flipScope     = "flip:"
+	retryAttempts   = 3
+	retryCooldown   = 5 * time.Minute
+	dormantCooldown = time.Hour
+	flipScope       = "flip:"
 )
 
 func (s *service) runFlips(stop chan struct{}, client clientAPI, records []torrentRecord, snapshot map[string]qbit.TorrentInfo) {
@@ -22,7 +23,7 @@ func (s *service) runFlips(stop chan struct{}, client clientAPI, records []torre
 		if stopping(stop) {
 			return
 		}
-		if record.LocalPath != "" {
+		if record.LocalPath != "" || s.ignored.contains(record.Hash) {
 			continue
 		}
 		cached, ok := snapshot[record.Hash]

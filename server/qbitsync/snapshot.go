@@ -7,7 +7,11 @@ import (
 	"server/qbit"
 )
 
-const snapshotTTL = 2 * time.Second
+const (
+	snapshotTTL        = 2 * time.Second
+	snapshotStaleAfter = time.Minute
+	unreachableMessage = "qBittorrent unreachable"
+)
 
 func Snapshot() map[string]qbit.TorrentInfo {
 	return svc.snapshotView(true)
@@ -33,6 +37,12 @@ func (s *service) snapshotData() map[string]qbit.TorrentInfo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.snapshot
+}
+
+func (s *service) snapshotUnreachable() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.snapshotError != "" && nowFunc().Sub(s.snapshotOkAt) > snapshotStaleAfter
 }
 
 func (s *service) markDemand() {
@@ -72,6 +82,10 @@ func (s *service) refreshSnapshot() {
 			data[strings.ToLower(info.Hash)] = info
 		}
 		s.snapshot = data
+		s.snapshotOkAt = s.snapshotAt
+		s.snapshotError = ""
+	} else {
+		s.snapshotError = err.Error()
 	}
 	s.mu.Unlock()
 

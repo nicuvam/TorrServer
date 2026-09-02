@@ -7,35 +7,35 @@ import (
 	"server/settings"
 )
 
-const ignoreBucket = "QBitIgnored"
+const noAutomationBucket = "QBitIgnored"
 
 var (
-	listIgnored = func() []string {
+	listNoAutomation = func() []string {
 		db := settings.NewTDB()
 		if db == nil {
 			return nil
 		}
-		return db.List(ignoreBucket)
+		return db.List(noAutomationBucket)
 	}
-	storeIgnored = func(hash string) {
+	storeNoAutomation = func(hash string) {
 		if settings.ReadOnly {
 			return
 		}
 		if db := settings.NewTDB(); db != nil {
-			db.Set(ignoreBucket, hash, []byte("1"))
+			db.Set(noAutomationBucket, hash, []byte("1"))
 		}
 	}
-	removeIgnored = func(hash string) {
+	removeNoAutomation = func(hash string) {
 		if settings.ReadOnly {
 			return
 		}
 		if db := settings.NewTDB(); db != nil {
-			db.Rem(ignoreBucket, hash)
+			db.Rem(noAutomationBucket, hash)
 		}
 	}
 )
 
-type ignoreSet struct {
+type noAutomationSet struct {
 	mu     sync.Mutex
 	loaded bool
 	hashes map[string]bool
@@ -57,36 +57,36 @@ func normalizeHash(hashHex string) string {
 	return strings.ToLower(strings.TrimSpace(hashHex))
 }
 
-func (i *ignoreSet) contains(hash string) bool {
+func (i *noAutomationSet) contains(hash string) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.loadLocked()
 	return i.hashes[hash]
 }
 
-func (i *ignoreSet) add(hash string) {
+func (i *noAutomationSet) add(hash string) {
 	i.mu.Lock()
 	i.loadLocked()
 	i.hashes[hash] = true
 	i.mu.Unlock()
-	storeIgnored(hash)
+	storeNoAutomation(hash)
 }
 
-func (i *ignoreSet) remove(hash string) {
+func (i *noAutomationSet) remove(hash string) {
 	i.mu.Lock()
 	i.loadLocked()
 	delete(i.hashes, hash)
 	i.mu.Unlock()
-	removeIgnored(hash)
+	removeNoAutomation(hash)
 }
 
-func (i *ignoreSet) loadLocked() {
+func (i *noAutomationSet) loadLocked() {
 	if i.loaded {
 		return
 	}
 	i.loaded = true
 	i.hashes = make(map[string]bool)
-	for _, hash := range listIgnored() {
+	for _, hash := range listNoAutomation() {
 		i.hashes[normalizeHash(hash)] = true
 	}
 }

@@ -65,13 +65,15 @@ type service struct {
 
 	snapshot        map[string]qbit.TorrentInfo
 	snapshotAt      time.Time
+	snapshotOkAt    time.Time
+	snapshotError   string
 	snapshotLoading bool
 	demandAt        time.Time
 
 	files        map[string]filesEntry
 	filesLoading map[string]bool
 
-	ignored ignoreSet
+	ignored noAutomationSet
 
 	prefs        qbit.Preferences
 	prefsAt      time.Time
@@ -173,6 +175,8 @@ func (s *service) acquire() (clientAPI, error) {
 func (s *service) clearCachesLocked() {
 	s.snapshot = make(map[string]qbit.TorrentInfo)
 	s.snapshotAt = time.Time{}
+	s.snapshotOkAt = time.Time{}
+	s.snapshotError = ""
 	s.files = make(map[string]filesEntry)
 	s.filesLoading = make(map[string]bool)
 	s.prefs = qbit.Preferences{}
@@ -191,10 +195,14 @@ func (s *service) retryReady(key string) bool {
 	if !ok {
 		return true
 	}
-	if entry.dormant {
+	if nowFunc().Before(entry.nextAt) {
 		return false
 	}
-	return !nowFunc().Before(entry.nextAt)
+	if entry.dormant {
+		entry.dormant = false
+		entry.attempts = 0
+	}
+	return true
 }
 
 func (s *service) retryFailed(key string) {
@@ -208,6 +216,7 @@ func (s *service) retryFailed(key string) {
 	entry.attempts++
 	if entry.attempts >= retryAttempts {
 		entry.dormant = true
+		entry.nextAt = nowFunc().Add(dormantCooldown)
 		return
 	}
 	entry.nextAt = nowFunc().Add(retryCooldown)
@@ -270,13 +279,19 @@ func DeleteInQBit(hashHex string, deleteFiles bool) error {
 }
 
 func TestConnection(baseURL, username, password string) (string, error) {
-	client := qbit.New(baseURL, username, password)
-	version, err := client.APIVersion()
+	return qbit.New(baseURL, username, password).APIVersion()
+}
+
+func EnsureCategories() error {
+	client, err := svc.acquire()
 	if err != nil {
-		return "", err
+		return err
 	}
+	var failure error
 	for _, name := range mirroredCategories {
-		_ = client.CreateCategory(name, "")
+		if err = client.CreateCategory(name, ""); err != nil && failure == nil {
+			failure = err
+		}
 	}
-	return version, nil
+	return failure
 }
