@@ -159,6 +159,7 @@ func addTorrent(req torrReqJS, c *gin.Context) {
 	}
 
 	saveToDB := req.SaveToDB || localPath != ""
+	qbitsync.Unforget(torrSpec.InfoHash.HexString())
 
 	go func() {
 		if !tor.GotInfo() {

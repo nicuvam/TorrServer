@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"server/log"
+	"server/qbitsync"
 	set "server/settings"
 	"server/torr"
 	"server/torr/state"
@@ -121,6 +122,7 @@ func torrentUpload(c *gin.Context) {
 			}
 		}(tor)
 
+		qbitsync.Unforget(spec.InfoHash.HexString())
 		stats = append(stats, tor.Status())
 	}
 
