@@ -17,7 +17,7 @@ import {
 } from '@material-ui/core'
 import DeleteIcon from '@material-ui/icons/Delete'
 import axios from 'axios'
-import { qbitCategoriesHost, qbitTestHost } from 'utils/Hosts'
+import { qbitCategoriesHost, qbitImportHost, qbitTestHost } from 'utils/Hosts'
 
 import { SecondarySettingsContent, SettingSectionLabel } from './style'
 
@@ -42,6 +42,7 @@ export default function QBitSettings({ settings, updateSettings }) {
   const [newTo, setNewTo] = useState('')
   const [testing, setTesting] = useState(false)
   const [creatingCategories, setCreatingCategories] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [testResult, setTestResult] = useState(null)
 
   const handleChange = (field, value) => {
@@ -108,6 +109,22 @@ export default function QBitSettings({ settings, updateSettings }) {
     setCreatingCategories(false)
   }
 
+  const handleImportNow = async () => {
+    setImporting(true)
+    setTestResult(null)
+    try {
+      const { data } = await axios.post(qbitImportHost())
+      if (data.success) {
+        setTestResult({ success: true, msg: t('QBit.Imported', { count: data.imported }) })
+      } else {
+        setTestResult({ success: false, msg: data.error })
+      }
+    } catch (e) {
+      setTestResult({ success: false, msg: e.message })
+    }
+    setImporting(false)
+  }
+
   return (
     <SecondarySettingsContent>
       <SettingSectionLabel>{t('QBit.Settings')}</SettingSectionLabel>
@@ -171,6 +188,15 @@ export default function QBitSettings({ settings, updateSettings }) {
             style={{ flex: '1 1 auto', minWidth: 100 }}
           >
             {creatingCategories ? <CircularProgress size={24} color='inherit' /> : t('QBit.CreateCategories')}
+          </Button>
+          <Button
+            variant='outlined'
+            color='secondary'
+            onClick={handleImportNow}
+            disabled={!URL || importing}
+            style={{ flex: '1 1 auto', minWidth: 100 }}
+          >
+            {importing ? <CircularProgress size={24} color='inherit' /> : t('QBit.ImportNow')}
           </Button>
         </div>
         <FormHelperText margin='none' style={{ marginBottom: '10px' }}>
