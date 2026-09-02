@@ -1,12 +1,16 @@
 package api
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 
+	"github.com/anacrolix/dms/dlna"
+	"github.com/anacrolix/missinggo/v2/httptoo"
 	"github.com/gin-gonic/gin"
 
 	"server/log"
@@ -106,18 +110,24 @@ func qbitServeFile(c *gin.Context, tor *torr.Torrent, indexStr string) bool {
 }
 
 func serveCompletedFile(c *gin.Context, hash string, index int, name, path string) bool {
+	stat, err := os.Stat(path)
+	if err != nil {
+		log.TLogln("error stat qbittorrent file:", err)
+		return false
+	}
+
+	if set.MaxSize > 0 && stat.Size() > set.MaxSize {
+		log.TLogln(fmt.Sprintf("File %s size (%d) exceeded max allowed %d bytes", name, stat.Size(), set.MaxSize))
+		http.Error(c.Writer, fmt.Sprintf("file size exceeded max allowed %d bytes", set.MaxSize), http.StatusForbidden)
+		return true
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		log.TLogln("error open qbittorrent file:", err)
 		return false
 	}
 	defer file.Close()
-
-	stat, err := file.Stat()
-	if err != nil {
-		log.TLogln("error stat qbittorrent file:", err)
-		return false
-	}
 
 	var timecode float64
 	for _, v := range set.ListViewed(hash) {
@@ -134,8 +144,23 @@ func serveCompletedFile(c *gin.Context, hash string, index int, name, path strin
 
 	c.Header("Connection", "close")
 	c.Header("Server", "TorrServer (Portable SDK for UPnP devices)")
+	if streamTimeout := set.BTsets.TorrentDisconnectTimeout; streamTimeout > 0 {
+		c.Header("X-Stream-Timeout", fmt.Sprintf("%d", streamTimeout))
+	}
+	etag := hex.EncodeToString([]byte(fmt.Sprintf("%s/%s", hash, name)))
+	c.Header("ETag", httptoo.EncodeQuotedString(etag))
+	c.Header("transferMode.dlna.org", "Streaming")
 	if mime, err := mt.MimeTypeByPath(name); err == nil && mime.IsMedia() {
 		c.Header("content-type", mime.String())
+	}
+	if c.GetHeader("getContentFeatures.dlna.org") != "" {
+		c.Header("contentFeatures.dlna.org", dlna.ContentFeatures{
+			SupportRange:    true,
+			SupportTimeSeek: true,
+		}.String())
+	}
+	if c.GetHeader("Range") != "" {
+		c.Header("Accept-Ranges", "bytes")
 	}
 
 	http.ServeContent(c.Writer, c.Request, name, stat.ModTime(), file)

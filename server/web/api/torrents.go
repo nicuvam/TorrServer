@@ -210,6 +210,7 @@ func remTorrent(req torrReqJS, c *gin.Context) {
 			log.TLogln("error delete torrent in qbittorrent:", err)
 		}
 	}
+	qbitsync.Forget(req.Hash)
 	torr.RemTorrent(req.Hash)
 	gstreamer.Remove(req.Hash)
 	// TODO: remove
@@ -248,6 +249,7 @@ func wipeTorrents(c *gin.Context) {
 	torrents := torr.ListTorrent()
 	for _, t := range torrents {
 		hash := t.TorrentSpec.InfoHash.HexString()
+		qbitsync.Forget(hash)
 		torr.RemTorrent(hash)
 		gstreamer.Remove(hash)
 	}
