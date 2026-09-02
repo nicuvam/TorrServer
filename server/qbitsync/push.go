@@ -51,6 +51,7 @@ func (s *service) push(hashHex string) error {
 	}
 
 	s.clearError(hash)
+	s.ignored.remove(hash)
 	s.invalidateSnapshot()
 	return nil
 }

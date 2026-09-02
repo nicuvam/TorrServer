@@ -17,8 +17,11 @@ const (
 	flipScope     = "flip:"
 )
 
-func (s *service) runFlips(client clientAPI, records []torrentRecord, snapshot map[string]qbit.TorrentInfo) {
+func (s *service) runFlips(stop chan struct{}, client clientAPI, records []torrentRecord, snapshot map[string]qbit.TorrentInfo) {
 	for _, record := range records {
+		if stopping(stop) {
+			return
+		}
 		if record.LocalPath != "" {
 			continue
 		}
@@ -91,7 +94,7 @@ func (s *service) queueDrop(record torrentRecord) {
 	s.mu.Unlock()
 }
 
-func (s *service) drainDrops(records []torrentRecord) {
+func (s *service) drainDrops(stop chan struct{}, records []torrentRecord) {
 	s.mu.Lock()
 	pending := len(s.drops)
 	s.mu.Unlock()
@@ -100,6 +103,9 @@ func (s *service) drainDrops(records []torrentRecord) {
 	}
 
 	for _, record := range records {
+		if stopping(stop) {
+			return
+		}
 		s.mu.Lock()
 		queued := s.drops[record.Hash]
 		s.mu.Unlock()

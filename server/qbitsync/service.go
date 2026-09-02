@@ -68,7 +68,10 @@ type service struct {
 	snapshotLoading bool
 	demandAt        time.Time
 
-	files map[string]filesEntry
+	files        map[string]filesEntry
+	filesLoading map[string]bool
+
+	ignored ignoreSet
 
 	prefs        qbit.Preferences
 	prefsAt      time.Time
@@ -171,6 +174,7 @@ func (s *service) clearCachesLocked() {
 	s.snapshot = make(map[string]qbit.TorrentInfo)
 	s.snapshotAt = time.Time{}
 	s.files = make(map[string]filesEntry)
+	s.filesLoading = make(map[string]bool)
 	s.prefs = qbit.Preferences{}
 	s.prefsAt = time.Time{}
 	s.errors = make(map[string]string)

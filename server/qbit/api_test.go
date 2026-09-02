@@ -253,12 +253,16 @@ func TestExportRequest(t *testing.T) {
 		t.Fatalf("got body %q, want the raw torrent bytes", data)
 	}
 
-	for _, status := range []int{http.StatusNotFound, http.StatusConflict} {
+	cases := map[int]error{
+		http.StatusNotFound: ErrNotFound,
+		http.StatusConflict: ErrNoMetadata,
+	}
+	for status, want := range cases {
 		mock.setHandler(func(w http.ResponseWriter, req capturedRequest) {
 			w.WriteHeader(status)
 		})
-		if _, err = client.Export("aabb"); !errors.Is(err, ErrNotFound) {
-			t.Fatalf("status %d: got error %v, want %v", status, err, ErrNotFound)
+		if _, err = client.Export("aabb"); !errors.Is(err, want) {
+			t.Fatalf("status %d: got error %v, want %v", status, err, want)
 		}
 	}
 }

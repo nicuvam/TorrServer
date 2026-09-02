@@ -1,6 +1,7 @@
 package qbitsync
 
 import (
+	"errors"
 	"os"
 	"path"
 	"path/filepath"
@@ -15,6 +16,8 @@ const (
 	filesTTL     = 5 * time.Second
 	prioInterval = time.Minute
 )
+
+var errFilesNotReady = errors.New("qbittorrent: file list not cached yet")
 
 func CompleteFilePath(hashHex string, fileIndex int) (string, bool) {
 	return svc.completeFilePath(hashHex, fileIndex)
@@ -46,9 +49,13 @@ func (s *service) fileIndexByName(hashHex, name string) (int, bool) {
 		return 0, false
 	}
 
-	files, err := s.torrentFiles(client, strings.ToLower(strings.TrimSpace(hashHex)))
+	hash := strings.ToLower(strings.TrimSpace(hashHex))
+	if _, known := s.torrentInfo(hash); !known {
+		return 0, false
+	}
+
+	files, err := s.torrentFiles(client, hash)
 	if err != nil {
-		s.logProblem(err)
 		return 0, false
 	}
 
@@ -66,14 +73,13 @@ func (s *service) completeFilePath(hashHex string, fileIndex int) (string, bool)
 	}
 
 	hash := strings.ToLower(strings.TrimSpace(hashHex))
-	info, ok := s.torrentInfo(client, hash)
+	info, ok := s.torrentInfo(hash)
 	if !ok {
 		return "", false
 	}
 
 	files, err := s.torrentFiles(client, hash)
 	if err != nil {
-		s.logProblem(err)
 		return "", false
 	}
 
@@ -108,40 +114,43 @@ func (s *service) prioritizeFile(hashHex string, fileIndex int) {
 	}()
 }
 
-func (s *service) torrentInfo(client clientAPI, hash string) (qbit.TorrentInfo, bool) {
-	if info, ok := s.snapshotView(true)[hash]; ok {
-		return info, true
-	}
-
-	list, err := client.Info([]string{hash})
-	if err != nil {
-		s.logProblem(err)
-		return qbit.TorrentInfo{}, false
-	}
-	for _, info := range list {
-		return info, true
-	}
-	return qbit.TorrentInfo{}, false
+func (s *service) torrentInfo(hash string) (qbit.TorrentInfo, bool) {
+	info, ok := s.snapshotView(true)[hash]
+	return info, ok
 }
 
 func (s *service) torrentFiles(client clientAPI, hash string) ([]qbit.FileInfo, error) {
 	s.mu.Lock()
-	entry, ok := s.files[hash]
-	fresh := ok && nowFunc().Sub(entry.updatedAt) < filesTTL
+	entry, cached := s.files[hash]
+	fresh := cached && nowFunc().Sub(entry.updatedAt) < filesTTL
+	refresh := !fresh && !s.filesLoading[hash]
+	if refresh {
+		s.filesLoading[hash] = true
+	}
 	s.mu.Unlock()
-	if fresh {
+
+	if refresh {
+		go s.refreshFiles(client, hash)
+	}
+	if cached {
 		return entry.files, nil
 	}
+	return nil, errFilesNotReady
+}
 
+func (s *service) refreshFiles(client clientAPI, hash string) {
 	files, err := client.Files(hash)
-	if err != nil {
-		return nil, err
-	}
 
 	s.mu.Lock()
-	s.files[hash] = filesEntry{files: files, updatedAt: nowFunc()}
+	delete(s.filesLoading, hash)
+	if err == nil {
+		s.files[hash] = filesEntry{files: files, updatedAt: nowFunc()}
+	}
 	s.mu.Unlock()
-	return files, nil
+
+	if err != nil {
+		s.logProblem(err)
+	}
 }
 
 func findFile(files []qbit.FileInfo, index int) (qbit.FileInfo, bool) {

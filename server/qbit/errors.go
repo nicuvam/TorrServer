@@ -12,6 +12,7 @@ var (
 	ErrUnreachable   = errors.New("qbittorrent: unreachable")
 	ErrBadTorrent    = errors.New("qbittorrent: torrent rejected")
 	ErrNotFound      = errors.New("qbittorrent: not found")
+	ErrNoMetadata    = errors.New("qbittorrent: torrent metadata not available yet")
 )
 
 type APIError struct {

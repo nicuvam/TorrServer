@@ -3,6 +3,7 @@ package qbitsync
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -21,11 +22,13 @@ const (
 	importScope    = "import:"
 )
 
+var errMetadataNotReady = errors.New("qbittorrent: metadata not ready")
+
 func (s *service) loop(stop, done chan struct{}) {
 	defer close(done)
 
 	for {
-		s.tick()
+		s.tick(stop)
 
 		timer := time.NewTimer(s.interval())
 		select {
@@ -50,7 +53,16 @@ func (s *service) demandRecent() bool {
 	return !s.demandAt.IsZero() && nowFunc().Sub(s.demandAt) < demandWindow
 }
 
-func (s *service) tick() {
+func stopping(stop chan struct{}) bool {
+	select {
+	case <-stop:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *service) tick(stop chan struct{}) {
 	cfg := settingsConfig()
 	if !cfg.Enabled || strings.TrimSpace(cfg.URL) == "" {
 		return
@@ -71,12 +83,12 @@ func (s *service) tick() {
 	snapshot := s.snapshotData()
 
 	if cfg.AutoLocal {
-		s.runFlips(client, records, snapshot)
+		s.runFlips(stop, client, records, snapshot)
 	}
 	if cfg.AutoImport {
-		s.runImport(client, records, snapshot)
+		s.runImport(stop, client, records, snapshot)
 	}
-	s.drainDrops(records)
+	s.drainDrops(stop, listRecords())
 }
 
 func (s *service) hasWork(cfg settings.QBitConfig, records []torrentRecord) bool {
@@ -94,7 +106,7 @@ func (s *service) hasWork(cfg settings.QBitConfig, records []torrentRecord) bool
 	return false
 }
 
-func (s *service) runImport(client clientAPI, records []torrentRecord, snapshot map[string]qbit.TorrentInfo) {
+func (s *service) runImport(stop chan struct{}, client clientAPI, records []torrentRecord, snapshot map[string]qbit.TorrentInfo) {
 	if settings.ReadOnly {
 		s.logProblem(errors.New("read-only DB mode, auto import disabled"))
 		return
@@ -106,14 +118,20 @@ func (s *service) runImport(client clientAPI, records []torrentRecord, snapshot 
 	}
 
 	for hash, info := range snapshot {
+		if stopping(stop) {
+			return
+		}
 		category := strings.ToLower(strings.TrimSpace(info.Category))
-		if !isMirroredCategory(category) || known[hash] {
+		if !isMirroredCategory(category) || known[hash] || s.ignored.contains(hash) {
 			continue
 		}
 		if !s.retryReady(importScope + hash) {
 			continue
 		}
-		if err := s.importTorrent(client, hash, info, category); err != nil {
+		if err := s.importTorrent(client, hash, category); err != nil {
+			if errors.Is(err, errMetadataNotReady) {
+				continue
+			}
 			s.setError(hash, err)
 			s.retryFailed(importScope + hash)
 			continue
@@ -123,32 +141,28 @@ func (s *service) runImport(client clientAPI, records []torrentRecord, snapshot 
 	}
 }
 
-func (s *service) importTorrent(client clientAPI, hash string, info qbit.TorrentInfo, category string) error {
-	spec, err := importSpec(client, hash, info)
+func (s *service) importTorrent(client clientAPI, hash, category string) error {
+	spec, err := importSpec(client, hash)
 	if err != nil {
 		return err
 	}
 	return importViaAdd(spec, category)
 }
 
-func importSpec(client clientAPI, hash string, info qbit.TorrentInfo) (*torrent.TorrentSpec, error) {
+func importSpec(client clientAPI, hash string) (*torrent.TorrentSpec, error) {
 	data, err := client.Export(hash)
-	switch {
-	case err == nil:
-		return specFromTorrentFile(data)
-	case errors.Is(err, qbit.ErrNotFound):
-		return &torrent.TorrentSpec{
-			InfoHash:    metainfo.NewHashFromHex(hash),
-			DisplayName: info.Name,
-		}, nil
-	default:
+	if err != nil {
+		if errors.Is(err, qbit.ErrNoMetadata) {
+			return nil, errMetadataNotReady
+		}
 		return nil, err
 	}
+	return specFromTorrentFile(data)
 }
 
 func importTorrentViaAdd(spec *torrent.TorrentSpec, category string) error {
 	if len(spec.InfoBytes) == 0 {
-		return importRecordOnly(spec, category)
+		return fmt.Errorf("qbittorrent: no metadata for %s", spec.InfoHash.HexString())
 	}
 	if torr.HasLiveTorrent(spec.InfoHash) {
 		return nil
@@ -165,20 +179,6 @@ func importTorrentViaAdd(spec *torrent.TorrentSpec, category string) error {
 	if tor.ActiveReaders() == 0 {
 		torr.DropTorrent(spec.InfoHash.HexString())
 	}
-	return nil
-}
-
-func importRecordOnly(spec *torrent.TorrentSpec, category string) error {
-	sanitized := *spec
-	sanitized.Storage = nil
-	titled := &torr.Torrent{TorrentSpec: &sanitized}
-	torr.ApplyDefaultTitle(titled)
-	settings.AddTorrent(&settings.TorrentDB{
-		TorrentSpec: &sanitized,
-		Title:       titled.Title,
-		Category:    category,
-		Timestamp:   nowFunc().Unix(),
-	})
 	return nil
 }
 

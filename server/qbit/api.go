@@ -120,7 +120,7 @@ func (c *Client) Export(hash string) ([]byte, error) {
 	if err != nil {
 		var apiErr *APIError
 		if errors.As(err, &apiErr) && apiErr.Status == http.StatusConflict {
-			return nil, ErrNotFound
+			return nil, ErrNoMetadata
 		}
 		return nil, err
 	}

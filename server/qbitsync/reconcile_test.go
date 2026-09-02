@@ -131,6 +131,23 @@ func (c *fakeClient) awaitPrioCalls(t *testing.T, want int) {
 	}
 }
 
+func (c *fakeClient) awaitFilesCalls(t *testing.T, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		c.mu.Lock()
+		got := c.filesCalls
+		c.mu.Unlock()
+		if got == want {
+			return
+		}
+		if got > want || time.Now().After(deadline) {
+			t.Fatalf("files calls = %d, want %d", got, want)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func (c *fakeClient) totalCalls() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -162,6 +179,12 @@ type testEnv struct {
 	local    map[string]string
 	dropped  []string
 	imported []importedAdd
+	ignored  map[string]bool
+	running  chan struct{}
+}
+
+func (e *testEnv) tick() {
+	e.service.tick(e.running)
 }
 
 type importedAdd struct {
@@ -179,6 +202,9 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 	previousLocal := setLocalPath
 	previousDrop := dropTorrent
 	previousImport := importViaAdd
+	previousIgnoreList := listIgnored
+	previousIgnoreStore := storeIgnored
+	previousIgnoreRemove := removeIgnored
 	t.Cleanup(func() {
 		settings.BTsets = previousSets
 		nowFunc = previousNow
@@ -187,12 +213,17 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 		setLocalPath = previousLocal
 		dropTorrent = previousDrop
 		importViaAdd = previousImport
+		listIgnored = previousIgnoreList
+		storeIgnored = previousIgnoreStore
+		removeIgnored = previousIgnoreRemove
 	})
 
 	env := &testEnv{
-		client: newFakeClient(),
-		clock:  &testClock{current: time.Unix(1700000000, 0)},
-		local:  make(map[string]string),
+		client:  newFakeClient(),
+		clock:   &testClock{current: time.Unix(1700000000, 0)},
+		local:   make(map[string]string),
+		ignored: make(map[string]bool),
+		running: make(chan struct{}),
 	}
 	env.service = newService()
 
@@ -209,6 +240,15 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 		env.imported = append(env.imported, importedAdd{spec: spec, category: category})
 		return nil
 	}
+	listIgnored = func() []string {
+		hashes := make([]string, 0, len(env.ignored))
+		for hash := range env.ignored {
+			hashes = append(hashes, hash)
+		}
+		return hashes
+	}
+	storeIgnored = func(hash string) { env.ignored[hash] = true }
+	removeIgnored = func(hash string) { delete(env.ignored, hash) }
 
 	return env
 }
@@ -272,7 +312,7 @@ func completedInfo(hash, contentPath, savePath, category string) qbit.TorrentInf
 func TestTickIdleMakesNoRequests(t *testing.T) {
 	env := newTestEnv(t, enabledConfig())
 
-	env.service.tick()
+	env.tick()
 
 	if calls := env.client.totalCalls(); calls != 0 {
 		t.Fatalf("idle tick made %d qBittorrent calls", calls)
@@ -295,7 +335,7 @@ func TestFlipRetriesThenGoesDormant(t *testing.T) {
 	env.records = []torrentRecord{{Hash: hash, InfoBytes: testInfoBytes(t, info)}}
 	env.client.torrents[hash] = completedInfo(hash, "/missing/release", "/missing", "tv")
 
-	env.service.tick()
+	env.tick()
 	if env.client.hashCalls != 1 {
 		t.Fatalf("first tick hash calls = %d, want 1", env.client.hashCalls)
 	}
@@ -303,25 +343,25 @@ func TestFlipRetriesThenGoesDormant(t *testing.T) {
 		t.Fatal("failed flip did not record an error")
 	}
 
-	env.service.tick()
+	env.tick()
 	if env.client.hashCalls != 1 {
 		t.Fatalf("cooldown tick hash calls = %d, want 1", env.client.hashCalls)
 	}
 
 	env.clock.advance(retryCooldown)
-	env.service.tick()
+	env.tick()
 	if env.client.hashCalls != 2 {
 		t.Fatalf("second attempt hash calls = %d, want 2", env.client.hashCalls)
 	}
 
 	env.clock.advance(retryCooldown)
-	env.service.tick()
+	env.tick()
 	if env.client.hashCalls != 3 {
 		t.Fatalf("third attempt hash calls = %d, want 3", env.client.hashCalls)
 	}
 
 	env.clock.advance(24 * time.Hour)
-	env.service.tick()
+	env.tick()
 	if env.client.hashCalls != 3 {
 		t.Fatalf("dormant tick hash calls = %d, want 3", env.client.hashCalls)
 	}
@@ -345,7 +385,7 @@ func TestFlipWaitsForActiveReaders(t *testing.T) {
 	env.records = []torrentRecord{{Hash: hash, InfoBytes: testInfoBytes(t, info), Live: true, ActiveReaders: 1}}
 	env.client.torrents[hash] = completedInfo(hash, root, filepath.Dir(root), "tv")
 
-	env.service.tick()
+	env.tick()
 
 	if env.local[hash] != root {
 		t.Fatalf("local path = %q, want %q", env.local[hash], root)
@@ -355,7 +395,7 @@ func TestFlipWaitsForActiveReaders(t *testing.T) {
 	}
 
 	env.records = []torrentRecord{{Hash: hash, LocalPath: root, Live: true}}
-	env.service.tick()
+	env.tick()
 
 	if len(env.dropped) != 1 || env.dropped[0] != hash {
 		t.Fatalf("dropped = %v, want [%s]", env.dropped, hash)
@@ -384,7 +424,7 @@ func TestAutoImportSkipsKnownAndUncategorized(t *testing.T) {
 	env.client.torrents[foreign] = completedInfo(foreign, "/data/soft", "/data", "software")
 	env.client.exports[newHash] = testTorrentFile(t, info)
 
-	env.service.tick()
+	env.tick()
 
 	if len(env.imported) != 1 {
 		t.Fatalf("imported %d torrents, want 1", len(env.imported))
@@ -401,8 +441,79 @@ func TestAutoImportSkipsKnownAndUncategorized(t *testing.T) {
 	}
 
 	env.records = append(env.records, torrentRecord{Hash: newHash})
-	env.service.tick()
+	env.tick()
 	if len(env.imported) != 1 {
 		t.Fatalf("imported %d torrents after second tick, want 1", len(env.imported))
+	}
+}
+
+func importConfig() settings.QBitConfig {
+	cfg := enabledConfig()
+	cfg.AutoLocal = false
+	cfg.AutoImport = true
+	return cfg
+}
+
+func TestAutoImportSkipsForgottenHash(t *testing.T) {
+	env := newTestEnv(t, importConfig())
+
+	files := []metainfo.FileInfo{{Path: []string{"ep.mkv"}, Length: 32}}
+	info := testInfo("forgotten", files)
+	hash := metainfo.HashBytes(testInfoBytes(t, info)).HexString()
+	env.client.torrents[hash] = completedInfo(hash, "/data/forgotten", "/data", "tv")
+	env.client.exports[hash] = testTorrentFile(t, info)
+	env.ignored[hash] = true
+
+	env.tick()
+
+	if len(env.imported) != 0 {
+		t.Fatalf("imported %d forgotten torrents, want 0", len(env.imported))
+	}
+	if env.client.exportCalls != 0 {
+		t.Fatalf("export calls for forgotten torrent = %d, want 0", env.client.exportCalls)
+	}
+
+	env.service.ignored.remove(hash)
+	if env.ignored[hash] {
+		t.Fatal("unforget did not clear the persisted hash")
+	}
+
+	env.tick()
+	if len(env.imported) != 1 {
+		t.Fatalf("imported %d torrents after unforget, want 1", len(env.imported))
+	}
+}
+
+func TestAutoImportSkipsMetadatalessWithoutRetry(t *testing.T) {
+	env := newTestEnv(t, importConfig())
+
+	hash := "8888888888888888888888888888888888888888"
+	env.client.torrents[hash] = completedInfo(hash, "/data/pending", "/data", "movie")
+	env.client.exportErr = qbit.ErrNoMetadata
+
+	for i := 0; i < retryAttempts+1; i++ {
+		env.tick()
+	}
+
+	if len(env.imported) != 0 {
+		t.Fatalf("imported %d metadata-less torrents, want 0", len(env.imported))
+	}
+	if _, ok := env.service.errorMap()[hash]; ok {
+		t.Fatal("metadata-less torrent recorded an error")
+	}
+	if env.client.exportCalls != retryAttempts+1 {
+		t.Fatalf("export calls = %d, want %d", env.client.exportCalls, retryAttempts+1)
+	}
+
+	env.client.exportErr = nil
+	info := testInfo("pending", []metainfo.FileInfo{{Path: []string{"ep.mkv"}, Length: 32}})
+	ready := metainfo.HashBytes(testInfoBytes(t, info)).HexString()
+	delete(env.client.torrents, hash)
+	env.client.torrents[ready] = completedInfo(ready, "/data/pending", "/data", "movie")
+	env.client.exports[ready] = testTorrentFile(t, info)
+
+	env.tick()
+	if len(env.imported) != 1 {
+		t.Fatalf("imported %d torrents once metadata arrived, want 1", len(env.imported))
 	}
 }

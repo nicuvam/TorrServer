@@ -1,9 +1,11 @@
 package qbitsync
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"server/qbit"
 	"server/settings"
@@ -124,6 +126,25 @@ func TestLocateFileLayouts(t *testing.T) {
 	})
 }
 
+func (e *testEnv) awaitFilesFetched(t *testing.T, want int) {
+	t.Helper()
+	e.client.awaitFilesCalls(t, want)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		e.service.mu.Lock()
+		loading := len(e.service.filesLoading)
+		e.service.mu.Unlock()
+		if loading == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("background file fetch did not settle")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestCompleteFilePathCachesFiles(t *testing.T) {
 	env := newTestEnv(t, enabledConfig())
 
@@ -145,6 +166,11 @@ func TestCompleteFilePathCachesFiles(t *testing.T) {
 		{Index: 1, Name: "Show/ep2.mkv", Size: 64, Progress: 0.5},
 	}
 
+	if _, ok := env.service.completeFilePath(hash, 0); ok {
+		t.Fatal("uncached file list served a path before the fetch completed")
+	}
+	env.awaitFilesFetched(t, 1)
+
 	got, ok := env.service.completeFilePath(hash, 0)
 	if !ok || got != target {
 		t.Fatalf("completeFilePath(0) = (%q, %v), want %q", got, ok, target)
@@ -153,17 +179,56 @@ func TestCompleteFilePathCachesFiles(t *testing.T) {
 	if _, ok = env.service.completeFilePath(hash, 1); ok {
 		t.Fatal("incomplete file reported as complete")
 	}
-	if env.client.filesCalls != 1 {
-		t.Fatalf("files calls = %d, want 1", env.client.filesCalls)
-	}
+	env.awaitFilesFetched(t, 1)
 
 	env.clock.advance(filesTTL)
 	env.service.snapshotAt = env.clock.Now()
 	if _, ok = env.service.completeFilePath(hash, 0); !ok {
-		t.Fatal("expired cache lost the completed file")
+		t.Fatal("stale cache stopped serving the completed file")
 	}
-	if env.client.filesCalls != 2 {
-		t.Fatalf("files calls after expiry = %d, want 2", env.client.filesCalls)
+	env.awaitFilesFetched(t, 2)
+}
+
+func TestFileLookupSkipsHashOutsideSnapshot(t *testing.T) {
+	env := newTestEnv(t, enabledConfig())
+	if _, err := env.service.acquire(); err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	env.service.snapshotAt = env.clock.Now()
+
+	hash := "6666666666666666666666666666666666666666"
+	env.client.files[hash] = []qbit.FileInfo{{Index: 0, Name: "ep1.mkv", Size: 64, Progress: 1}}
+
+	if _, ok := env.service.completeFilePath(hash, 0); ok {
+		t.Fatal("unknown hash reported a complete file")
+	}
+	if _, ok := env.service.fileIndexByName(hash, "ep1.mkv"); ok {
+		t.Fatal("unknown hash resolved a file index")
+	}
+	if calls := env.client.totalCalls(); calls != 0 {
+		t.Fatalf("unknown hash made %d qBittorrent calls", calls)
+	}
+}
+
+func TestTorrentFilesMissDefersFetch(t *testing.T) {
+	env := newTestEnv(t, enabledConfig())
+
+	client, err := env.service.acquire()
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+
+	hash := "7777777777777777777777777777777777777777"
+	env.client.files[hash] = []qbit.FileInfo{{Index: 0, Name: "ep1.mkv", Size: 64, Progress: 1}}
+
+	if _, err = env.service.torrentFiles(client, hash); !errors.Is(err, errFilesNotReady) {
+		t.Fatalf("cache miss error = %v, want %v", err, errFilesNotReady)
+	}
+	env.awaitFilesFetched(t, 1)
+
+	files, err := env.service.torrentFiles(client, hash)
+	if err != nil || len(files) != 1 {
+		t.Fatalf("cached files = (%v, %v), want one entry", files, err)
 	}
 }
 
