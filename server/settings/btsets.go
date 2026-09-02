@@ -128,7 +128,11 @@ type BTSets struct {
 }
 
 func (v *BTSets) String() string {
-	buf, _ := json.Marshal(v)
+	redacted := *v
+	if redacted.QBitSettings.Password != "" {
+		redacted.QBitSettings.Password = "***"
+	}
+	buf, _ := json.Marshal(redacted)
 	return string(buf)
 }
 

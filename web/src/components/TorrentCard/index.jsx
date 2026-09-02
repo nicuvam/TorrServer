@@ -189,6 +189,8 @@ const Torrent = ({ torrent }) => {
   const isMounted = useRef(true)
   const episodeButtonRef = useRef(null)
   const audioButtonRef = useRef(null)
+  const latestTorrent = useRef(torrent)
+  latestTorrent.current = torrent
   const gstRuntime = useGStreamerRuntime()
 
   useEffect(
@@ -260,8 +262,7 @@ const Torrent = ({ torrent }) => {
           posterLookupDone.add(lookupKey)
           return
         }
-        const { data: fresh } = await axios.post(torrentsHost(), { action: 'get', hash })
-        if (!fresh?.hash) return
+        const fresh = latestTorrent.current
         if (fresh.poster) {
           posterLookupDone.add(lookupKey)
           return

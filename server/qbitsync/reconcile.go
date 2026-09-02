@@ -91,7 +91,7 @@ func (s *service) tick(stop chan struct{}) {
 		s.runFlips(stop, client, records, snapshot)
 	}
 	if cfg.AutoImport {
-		s.runImport(stop, client, records, snapshot)
+		s.runImport(stop, client, snapshot)
 	}
 	s.runMirrorRemovals(stop, records, snapshot)
 	s.runVanishedRemovals(stop, records, snapshot)
@@ -192,10 +192,10 @@ func (s *service) importNow() (int, error) {
 	snapshot := s.snapshotData()
 	s.liftMirrored(snapshot)
 
-	return s.runImport(s.stopSignal(), client, listRecords(), snapshot)
+	return s.runImport(s.stopSignal(), client, snapshot)
 }
 
-func (s *service) runImport(stop chan struct{}, client clientAPI, records []torrentRecord, snapshot map[string]qbit.TorrentInfo) (int, error) {
+func (s *service) runImport(stop chan struct{}, client clientAPI, snapshot map[string]qbit.TorrentInfo) (int, error) {
 	if settings.ReadOnly {
 		s.logProblem(errors.New("read-only DB mode, auto import disabled"))
 		return 0, nil
@@ -207,6 +207,7 @@ func (s *service) runImport(stop chan struct{}, client clientAPI, records []torr
 	s.importMu.Lock()
 	defer s.importMu.Unlock()
 
+	records := listRecords()
 	known := make(map[string]bool, len(records))
 	for _, record := range records {
 		known[record.Hash] = true

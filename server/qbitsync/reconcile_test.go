@@ -997,3 +997,62 @@ func TestAutoImportSkipsMetadatalessWithoutRetry(t *testing.T) {
 		t.Fatalf("imported %d torrents once metadata arrived, want 1", len(env.imported))
 	}
 }
+
+func TestImportNowAndTickImportOnce(t *testing.T) {
+	cfg := enabledConfig()
+	cfg.AutoLocal = false
+	cfg.AutoImport = true
+	env := newTestEnv(t, cfg)
+
+	info := testInfo("racy", []metainfo.FileInfo{{Path: []string{"ep.mkv"}, Length: 32}})
+	hash := metainfo.HashBytes(testInfoBytes(t, info)).HexString()
+	env.client.torrents[hash] = completedInfo(hash, "/data/racy", "/data", "movie")
+	env.client.exports[hash] = testTorrentFile(t, info)
+
+	var mu sync.Mutex
+	imports := 0
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	listRecords = func() []torrentRecord {
+		mu.Lock()
+		defer mu.Unlock()
+		if imports > 0 {
+			return []torrentRecord{{Hash: hash, Category: "movie"}}
+		}
+		return nil
+	}
+	importViaAdd = func(*torrent.TorrentSpec, string) error {
+		mu.Lock()
+		first := imports == 0
+		mu.Unlock()
+		if first {
+			close(entered)
+			<-release
+		}
+		mu.Lock()
+		imports++
+		mu.Unlock()
+		return nil
+	}
+
+	importNowDone := make(chan struct{})
+	go func() {
+		defer close(importNowDone)
+		env.service.importNow()
+	}()
+	<-entered
+
+	tickDone := make(chan struct{})
+	go func() {
+		defer close(tickDone)
+		env.tick()
+	}()
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	<-importNowDone
+	<-tickDone
+
+	if imports != 1 {
+		t.Fatalf("imported %d times, want 1", imports)
+	}
+}
