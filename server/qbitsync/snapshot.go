@@ -39,6 +39,40 @@ func (s *service) snapshotData() map[string]qbit.TorrentInfo {
 	return s.snapshot
 }
 
+func (s *service) vanishedRemovalsAllowed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.snapshotError == "" && s.snapshotOkRuns > 1
+}
+
+func (s *service) seenInQBit(hash string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.seen[hash]
+}
+
+func (s *service) forgetSeen(hash string) {
+	s.mu.Lock()
+	delete(s.seen, hash)
+	s.mu.Unlock()
+}
+
+func (s *service) rememberSnapshotCategory(hash, category string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	info, ok := s.snapshot[hash]
+	if !ok || strings.EqualFold(info.Category, category) {
+		return
+	}
+	info.Category = category
+	updated := make(map[string]qbit.TorrentInfo, len(s.snapshot))
+	for key, value := range s.snapshot {
+		updated[key] = value
+	}
+	updated[hash] = info
+	s.snapshot = updated
+}
+
 func (s *service) snapshotUnreachable() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -86,11 +120,14 @@ func (s *service) refreshSnapshot() {
 	if err == nil {
 		data := make(map[string]qbit.TorrentInfo, len(list))
 		for _, info := range list {
-			data[strings.ToLower(info.Hash)] = info
+			hash := strings.ToLower(info.Hash)
+			data[hash] = info
+			s.seen[hash] = true
 		}
 		s.snapshot = data
 		s.snapshotOkAt = s.snapshotAt
 		s.snapshotError = ""
+		s.snapshotOkRuns++
 	} else {
 		s.snapshotError = err.Error()
 	}

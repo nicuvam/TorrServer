@@ -240,6 +240,23 @@ func TestFilePrioRequest(t *testing.T) {
 	}
 }
 
+func TestSetCategoryRequest(t *testing.T) {
+	mock := newMockQB(t)
+	client := mock.client()
+
+	if err := client.SetCategory([]string{"aabb", "ccdd"}, "tv"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	set := mock.lastRequest(setCategoryPath)
+	if set.Method != http.MethodPost {
+		t.Fatalf("got setCategory method %q, want POST", set.Method)
+	}
+	if set.Form.Get("hashes") != "aabb|ccdd" || set.Form.Get("category") != "tv" {
+		t.Fatalf("unexpected setCategory form: %v", set.Form)
+	}
+}
+
 func parseMultipart(t *testing.T, req capturedRequest) (map[string]string, map[string][]byte) {
 	t.Helper()
 

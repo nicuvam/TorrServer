@@ -20,6 +20,7 @@ const (
 	filePrioPath       = "api/v2/torrents/filePrio"
 	deletePath         = "api/v2/torrents/delete"
 	createCategoryPath = "api/v2/torrents/createCategory"
+	setCategoryPath    = "api/v2/torrents/setCategory"
 	preferencesPath    = "api/v2/app/preferences"
 
 	formContentType = "application/x-www-form-urlencoded"
@@ -150,6 +151,13 @@ func (c *Client) CreateCategory(name, savePath string) error {
 		form.Set("savePath", savePath)
 	}
 	return c.postForm(createCategoryPath, form)
+}
+
+func (c *Client) SetCategory(hashes []string, category string) error {
+	form := url.Values{}
+	form.Set("hashes", strings.Join(hashes, "|"))
+	form.Set("category", category)
+	return c.postForm(setCategoryPath, form)
 }
 
 func (c *Client) Preferences() (Preferences, error) {

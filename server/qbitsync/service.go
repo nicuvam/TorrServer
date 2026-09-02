@@ -24,6 +24,7 @@ type clientAPI interface {
 	FilePrio(hash string, indexes []int, priority int) error
 	Delete(hashes []string, deleteFiles bool) error
 	CreateCategory(name, savePath string) error
+	SetCategory(hashes []string, category string) error
 	Preferences() (qbit.Preferences, error)
 }
 
@@ -71,13 +72,14 @@ type service struct {
 	snapshotOkAt    time.Time
 	snapshotError   string
 	snapshotLoading bool
+	snapshotOkRuns  int
+	seen            map[string]bool
 	demandAt        time.Time
 
 	files        map[string]filesEntry
 	filesLoading map[string]bool
 
-	ignored  noAutomationSet
-	imported importedSet
+	ignored noAutomationSet
 
 	importMu sync.Mutex
 
@@ -194,6 +196,8 @@ func (s *service) clearCachesLocked() {
 	s.snapshotAt = time.Time{}
 	s.snapshotOkAt = time.Time{}
 	s.snapshotError = ""
+	s.snapshotOkRuns = 0
+	s.seen = make(map[string]bool)
 	s.files = make(map[string]filesEntry)
 	s.filesLoading = make(map[string]bool)
 	s.prefs = qbit.Preferences{}

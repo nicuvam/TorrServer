@@ -25,17 +25,23 @@ type fakeClient struct {
 	files    map[string][]qbit.FileInfo
 	exports  map[string][]byte
 
-	listCalls   int
-	hashCalls   int
-	filesCalls  int
-	exportCalls int
-	addCalls    int
-	prioCalls   int
-	deleteCalls int
-	prefsCalls  int
+	listCalls     int
+	hashCalls     int
+	filesCalls    int
+	exportCalls   int
+	addCalls      int
+	prioCalls     int
+	deleteCalls   int
+	prefsCalls    int
+	categoryCalls []categoryCall
 
 	exportErr error
 	infoErr   error
+}
+
+type categoryCall struct {
+	hashes   []string
+	category string
 }
 
 func newFakeClient() *fakeClient {
@@ -116,6 +122,19 @@ func (c *fakeClient) CreateCategory(name, savePath string) error {
 	return nil
 }
 
+func (c *fakeClient) SetCategory(hashes []string, category string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.categoryCalls = append(c.categoryCalls, categoryCall{hashes: hashes, category: category})
+	for _, hash := range hashes {
+		if info, ok := c.torrents[hash]; ok {
+			info.Category = category
+			c.torrents[hash] = info
+		}
+	}
+	return nil
+}
+
 func (c *fakeClient) Preferences() (qbit.Preferences, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -166,7 +185,7 @@ func (c *fakeClient) awaitFilesCalls(t *testing.T, want int) {
 func (c *fakeClient) totalCalls() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.listCalls + c.hashCalls + c.filesCalls + c.exportCalls + c.addCalls + c.prioCalls + c.deleteCalls + c.prefsCalls
+	return c.listCalls + c.hashCalls + c.filesCalls + c.exportCalls + c.addCalls + c.prioCalls + c.deleteCalls + c.prefsCalls + len(c.categoryCalls)
 }
 
 type testClock struct {
@@ -197,7 +216,6 @@ type testEnv struct {
 	removed    []string
 	imported   []importedAdd
 	ignored    map[string]string
-	provenance map[string]bool
 	running    chan struct{}
 }
 
@@ -232,9 +250,6 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 	previousIgnoreList := listNoAutomation
 	previousIgnoreStore := storeNoAutomation
 	previousIgnoreRemove := removeNoAutomation
-	previousImportedList := listImported
-	previousImportedStore := storeImported
-	previousImportedRemove := removeImported
 	t.Cleanup(func() {
 		settings.BTsets = previousSets
 		nowFunc = previousNow
@@ -249,9 +264,6 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 		listNoAutomation = previousIgnoreList
 		storeNoAutomation = previousIgnoreStore
 		removeNoAutomation = previousIgnoreRemove
-		listImported = previousImportedList
-		storeImported = previousImportedStore
-		removeImported = previousImportedRemove
 	})
 
 	env := &testEnv{
@@ -260,7 +272,6 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 		local:      make(map[string]string),
 		categories: make(map[string]string),
 		ignored:    make(map[string]string),
-		provenance: make(map[string]bool),
 		running:    make(chan struct{}),
 	}
 	env.service = newService()
@@ -293,15 +304,6 @@ func newTestEnv(t *testing.T, cfg settings.QBitConfig) *testEnv {
 	}
 	storeNoAutomation = func(hash, category string) { env.ignored[hash] = category }
 	removeNoAutomation = func(hash string) { delete(env.ignored, hash) }
-	listImported = func() []string {
-		hashes := make([]string, 0, len(env.provenance))
-		for hash := range env.provenance {
-			hashes = append(hashes, hash)
-		}
-		return hashes
-	}
-	storeImported = func(hash string) { env.provenance[hash] = true }
-	removeImported = func(hash string) { delete(env.provenance, hash) }
 
 	return env
 }
@@ -608,22 +610,16 @@ func TestCategorySyncFollowsQBit(t *testing.T) {
 
 	moved := "1111111111111111111111111111111111111111"
 	same := "2222222222222222222222222222222222222222"
-	foreign := "3333333333333333333333333333333333333333"
 	manual := "6666666666666666666666666666666666666666"
 
 	env.records = []torrentRecord{
 		{Hash: moved, Category: "movie"},
 		{Hash: same, Category: "music"},
-		{Hash: foreign, Category: "movie"},
 		{Hash: manual, Category: "anime"},
 	}
 	env.client.torrents[moved] = completedInfo(moved, "/data/moved", "/data", "tv")
 	env.client.torrents[same] = completedInfo(same, "/data/same", "/data", "music")
-	env.client.torrents[foreign] = completedInfo(foreign, "/data/foreign", "/data", "software")
 	env.client.torrents[manual] = completedInfo(manual, "/data/manual", "/data", "other")
-	env.provenance[moved] = true
-	env.provenance[same] = true
-	env.provenance[foreign] = true
 
 	env.tick()
 
@@ -633,38 +629,44 @@ func TestCategorySyncFollowsQBit(t *testing.T) {
 	if _, changed := env.categories[same]; changed {
 		t.Fatal("category rewritten while qBittorrent agrees")
 	}
-	if _, changed := env.categories[foreign]; changed {
-		t.Fatalf("foreign qBittorrent category written as %q", env.categories[foreign])
+	if env.categories[manual] != "other" {
+		t.Fatalf("category = %q, want other", env.categories[manual])
 	}
-	if _, changed := env.categories[manual]; changed {
-		t.Fatalf("category of a torrent not imported from qBittorrent rewritten as %q", env.categories[manual])
+	if len(env.removed) != 0 {
+		t.Fatalf("removed %v while every torrent is present in qBittorrent", env.removed)
 	}
 }
 
-func TestMirrorRemovesImportedTorrentLeavingCategories(t *testing.T) {
+func TestMirrorRemovesTorrentLeavingTheMirroredCategories(t *testing.T) {
 	env := newTestEnv(t, mirrorConfig())
 
-	auto := "4444444444444444444444444444444444444444"
-	manual := "5555555555555555555555555555555555555555"
+	left := "4444444444444444444444444444444444444444"
+	uncategorized := "7777777777777777777777777777777777777777"
+	kept := "5555555555555555555555555555555555555555"
 
 	env.records = []torrentRecord{
-		{Hash: auto, Category: "movie", LocalPath: "/data/auto"},
-		{Hash: manual, Category: "movie"},
+		{Hash: left, Category: "movie", LocalPath: "/data/left"},
+		{Hash: uncategorized, Category: "movie"},
+		{Hash: kept, Category: "movie"},
 	}
-	env.provenance[auto] = true
-	env.client.torrents[auto] = completedInfo(auto, "/data/auto", "/data", "software")
-	env.client.torrents[manual] = completedInfo(manual, "/data/manual", "/data", "")
+	env.client.torrents[left] = completedInfo(left, "/data/left", "/data", "software")
+	env.client.torrents[uncategorized] = completedInfo(uncategorized, "/data/uncategorized", "/data", "")
+	env.client.torrents[kept] = completedInfo(kept, "/data/kept", "/data", "movie")
 
 	env.tick()
 
-	if len(env.removed) != 1 || env.removed[0] != auto {
-		t.Fatalf("removed = %v, want [%s]", env.removed, auto)
+	if len(env.removed) != 2 {
+		t.Fatalf("removed = %v, want [%s %s]", env.removed, left, uncategorized)
 	}
-	if env.provenance[auto] {
-		t.Fatal("mirror removal kept the auto import provenance")
+	for _, hash := range []string{left, uncategorized} {
+		if _, tombstoned := env.ignored[hash]; tombstoned {
+			t.Fatalf("mirror removal tombstoned %s", hash)
+		}
 	}
-	if _, tombstoned := env.ignored[auto]; tombstoned {
-		t.Fatal("mirror removal tombstoned the hash")
+	for _, hash := range env.removed {
+		if hash == kept {
+			t.Fatal("removed a torrent still holding a mirrored category")
+		}
 	}
 }
 
@@ -673,9 +675,148 @@ func TestMirrorRemovalWaitsForActiveReaders(t *testing.T) {
 
 	hash := "6666666666666666666666666666666666666666"
 	env.records = []torrentRecord{{Hash: hash, Category: "movie", Live: true, ActiveReaders: 1}}
-	env.provenance[hash] = true
 	env.client.torrents[hash] = completedInfo(hash, "/data/watched", "/data", "")
 
+	env.tick()
+
+	if len(env.removed) != 0 {
+		t.Fatalf("removed %v while readers are active", env.removed)
+	}
+
+	env.records = []torrentRecord{{Hash: hash, Category: "movie", Live: true}}
+	env.tick()
+
+	if len(env.removed) != 1 || env.removed[0] != hash {
+		t.Fatalf("removed = %v, want [%s]", env.removed, hash)
+	}
+}
+
+func TestSyncCategoryToQBitPushesAndSurvivesNextTick(t *testing.T) {
+	env := newTestEnv(t, mirrorConfig())
+
+	hash := "9999999999999999999999999999999999999999"
+	env.records = []torrentRecord{{Hash: hash, Category: "movie"}}
+	env.client.torrents[hash] = completedInfo(hash, "/data/pushed", "/data", "movie")
+	env.service.refreshSnapshot()
+
+	if err := env.service.syncCategoryToQBit(hash, "tv"); err != nil {
+		t.Fatalf("sync category: %v", err)
+	}
+	if len(env.client.categoryCalls) != 1 {
+		t.Fatalf("setCategory calls = %d, want 1", len(env.client.categoryCalls))
+	}
+	call := env.client.categoryCalls[0]
+	if call.category != "tv" || len(call.hashes) != 1 || call.hashes[0] != hash {
+		t.Fatalf("unexpected setCategory call: %+v", call)
+	}
+
+	env.records = []torrentRecord{{Hash: hash, Category: "tv"}}
+	env.client.setInfoErr(errors.New("connection refused"))
+	env.tick()
+
+	if _, reverted := env.categories[hash]; reverted {
+		t.Fatalf("stale snapshot reverted the category to %q", env.categories[hash])
+	}
+
+	env.client.setInfoErr(nil)
+	env.tick()
+
+	if _, reverted := env.categories[hash]; reverted {
+		t.Fatalf("refreshed snapshot reverted the category to %q", env.categories[hash])
+	}
+	if len(env.removed) != 0 {
+		t.Fatalf("removed %v after a category push", env.removed)
+	}
+}
+
+func TestSyncCategoryToQBitSkipsUnknownAndUnmirrored(t *testing.T) {
+	env := newTestEnv(t, mirrorConfig())
+
+	known := "1010101010101010101010101010101010101010"
+	unknown := "2020202020202020202020202020202020202020"
+	env.client.torrents[known] = completedInfo(known, "/data/known", "/data", "movie")
+	env.service.refreshSnapshot()
+
+	if err := env.service.syncCategoryToQBit(unknown, "tv"); err != nil {
+		t.Fatalf("sync unknown hash: %v", err)
+	}
+	if err := env.service.syncCategoryToQBit(known, "anime"); err != nil {
+		t.Fatalf("sync unmirrored category: %v", err)
+	}
+	if err := env.service.syncCategoryToQBit(known, ""); err != nil {
+		t.Fatalf("sync empty category: %v", err)
+	}
+
+	if len(env.client.categoryCalls) != 0 {
+		t.Fatalf("setCategory calls = %v, want none", env.client.categoryCalls)
+	}
+}
+
+func TestQBitDeletionRemovesTorrentAfterSecondSnapshot(t *testing.T) {
+	env := newTestEnv(t, mirrorConfig())
+
+	deleted := "1212121212121212121212121212121212121212"
+	unknownToQBit := "1313131313131313131313131313131313131313"
+
+	env.records = []torrentRecord{
+		{Hash: deleted, Category: "movie"},
+		{Hash: unknownToQBit, Category: "movie"},
+	}
+	env.client.torrents[deleted] = completedInfo(deleted, "/data/deleted", "/data", "movie")
+
+	env.tick()
+	if len(env.removed) != 0 {
+		t.Fatalf("removed %v on the first successful snapshot", env.removed)
+	}
+
+	delete(env.client.torrents, deleted)
+	env.tick()
+
+	if len(env.removed) != 1 || env.removed[0] != deleted {
+		t.Fatalf("removed = %v, want [%s]", env.removed, deleted)
+	}
+
+	env.tick()
+	if len(env.removed) != 1 {
+		t.Fatalf("removed = %v, want a single removal", env.removed)
+	}
+}
+
+func TestQBitDeletionIgnoredWhileRefreshFails(t *testing.T) {
+	env := newTestEnv(t, mirrorConfig())
+
+	hash := "1414141414141414141414141414141414141414"
+	env.records = []torrentRecord{{Hash: hash, Category: "movie"}}
+	env.client.torrents[hash] = completedInfo(hash, "/data/gone", "/data", "movie")
+
+	env.service.refreshSnapshot()
+	delete(env.client.torrents, hash)
+	env.service.refreshSnapshot()
+
+	env.client.setInfoErr(errors.New("connection refused"))
+	env.tick()
+
+	if len(env.removed) != 0 {
+		t.Fatalf("removed %v after a failed refresh", env.removed)
+	}
+
+	env.client.setInfoErr(nil)
+	env.tick()
+
+	if len(env.removed) != 1 || env.removed[0] != hash {
+		t.Fatalf("removed = %v, want [%s]", env.removed, hash)
+	}
+}
+
+func TestQBitDeletionWaitsForActiveReaders(t *testing.T) {
+	env := newTestEnv(t, mirrorConfig())
+
+	hash := "1515151515151515151515151515151515151515"
+	env.records = []torrentRecord{{Hash: hash, Category: "movie", Live: true, ActiveReaders: 1}}
+	env.client.torrents[hash] = completedInfo(hash, "/data/watched", "/data", "movie")
+
+	env.tick()
+	delete(env.client.torrents, hash)
 	env.tick()
 
 	if len(env.removed) != 0 {
@@ -717,9 +858,6 @@ func TestTombstoneLiftsOnRecategorize(t *testing.T) {
 	if len(env.imported) != 1 || env.imported[0].category != "movie" {
 		t.Fatalf("imported = %v, want one movie import", env.imported)
 	}
-	if !env.provenance[hash] {
-		t.Fatal("import did not record auto import provenance")
-	}
 }
 
 func TestImportNowRunsWithAutoImportOff(t *testing.T) {
@@ -745,9 +883,6 @@ func TestImportNowRunsWithAutoImportOff(t *testing.T) {
 	}
 	if _, tombstoned := env.ignored[hash]; tombstoned {
 		t.Fatal("import now left the tombstone in place")
-	}
-	if !env.provenance[hash] {
-		t.Fatal("import now did not record auto import provenance")
 	}
 }
 

@@ -94,6 +94,7 @@ func (s *service) tick(stop chan struct{}) {
 		s.runImport(stop, client, records, snapshot)
 	}
 	s.runMirrorRemovals(stop, records, snapshot)
+	s.runVanishedRemovals(stop, records, snapshot)
 	s.drainDrops(stop, listRecords())
 }
 
@@ -124,7 +125,7 @@ func (s *service) syncCategories(stop chan struct{}, records []torrentRecord, sn
 			return
 		}
 		category := mirroredCategory(snapshot[record.Hash])
-		if category == "" || category == record.Category || !s.imported.contains(record.Hash) {
+		if category == "" || category == record.Category {
 			continue
 		}
 		if err := setCategory(record.Hash, category); err != nil {
@@ -142,14 +143,30 @@ func (s *service) runMirrorRemovals(stop chan struct{}, records []torrentRecord,
 		if !present || mirroredCategory(info) != "" {
 			continue
 		}
-		if !s.imported.contains(record.Hash) {
+		if record.Live && record.ActiveReaders > 0 {
+			continue
+		}
+		removeTorrent(record.Hash)
+		s.clearError(record.Hash)
+	}
+}
+
+func (s *service) runVanishedRemovals(stop chan struct{}, records []torrentRecord, snapshot map[string]qbit.TorrentInfo) {
+	if !s.vanishedRemovalsAllowed() {
+		return
+	}
+	for _, record := range records {
+		if stopping(stop) {
+			return
+		}
+		if _, present := snapshot[record.Hash]; present || !s.seenInQBit(record.Hash) {
 			continue
 		}
 		if record.Live && record.ActiveReaders > 0 {
 			continue
 		}
 		removeTorrent(record.Hash)
-		s.imported.remove(record.Hash)
+		s.forgetSeen(record.Hash)
 		s.clearError(record.Hash)
 	}
 }
@@ -221,7 +238,6 @@ func (s *service) runImport(stop chan struct{}, client clientAPI, records []torr
 		}
 		s.retrySucceeded(importScope + hash)
 		s.clearError(hash)
-		s.imported.add(hash)
 		imported++
 	}
 	return imported, failure

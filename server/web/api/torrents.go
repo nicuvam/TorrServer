@@ -216,6 +216,11 @@ func setTorrent(req torrReqJS, c *gin.Context) {
 	if req.LocalPath == nil || req.Title != "" || req.Poster != "" || req.Category != "" || req.Data != "" {
 		torr.SetTorrent(req.Hash, req.Title, req.Poster, req.Category, req.Data)
 	}
+	if req.Category != "" {
+		if err := qbitsync.SyncCategoryToQBit(req.Hash, req.Category); err != nil {
+			log.TLogln("error sync category to qbittorrent:", err)
+		}
+	}
 	c.Status(200)
 }
 

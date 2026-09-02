@@ -55,7 +55,6 @@ func Forget(hashHex string) {
 func Unforget(hashHex string) {
 	if hash := normalizeHash(hashHex); hash != "" {
 		svc.ignored.remove(hash)
-		svc.imported.remove(hash)
 	}
 }
 
