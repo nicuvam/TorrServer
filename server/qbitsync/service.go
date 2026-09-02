@@ -88,12 +88,14 @@ type service struct {
 
 	stopChan chan struct{}
 	doneChan chan struct{}
+	wake     chan struct{}
 }
 
 var svc = newService()
 
 func newService() *service {
 	s := new(service)
+	s.wake = make(chan struct{}, 1)
 	s.clearCachesLocked()
 	return s
 }

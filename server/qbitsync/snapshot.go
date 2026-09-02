@@ -47,8 +47,15 @@ func (s *service) snapshotUnreachable() bool {
 
 func (s *service) markDemand() {
 	s.mu.Lock()
+	idle := s.demandAt.IsZero() || nowFunc().Sub(s.demandAt) >= demandWindow
 	s.demandAt = nowFunc()
 	s.mu.Unlock()
+	if idle {
+		select {
+		case s.wake <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (s *service) invalidateSnapshot() {

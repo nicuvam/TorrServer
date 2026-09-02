@@ -36,6 +36,8 @@ func (s *service) loop(stop, done chan struct{}) {
 			timer.Stop()
 			return
 		case <-timer.C:
+		case <-s.wake:
+			timer.Stop()
 		}
 	}
 }

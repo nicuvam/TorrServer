@@ -598,6 +598,27 @@ func TestAutoImportSkipsForgottenHash(t *testing.T) {
 	}
 }
 
+func TestDemandWakesIdleLoop(t *testing.T) {
+	env := newTestEnv(t, enabledConfig())
+
+	env.service.markDemand()
+	if len(env.service.wake) != 1 {
+		t.Fatalf("wake signals after idle demand = %d, want 1", len(env.service.wake))
+	}
+	<-env.service.wake
+
+	env.service.markDemand()
+	if len(env.service.wake) != 0 {
+		t.Fatalf("wake signals while already active = %d, want 0", len(env.service.wake))
+	}
+
+	env.clock.advance(demandWindow + time.Second)
+	env.service.markDemand()
+	if len(env.service.wake) != 1 {
+		t.Fatalf("wake signals after demand window expired = %d, want 1", len(env.service.wake))
+	}
+}
+
 func TestAutoImportWaitsForEngine(t *testing.T) {
 	env := newTestEnv(t, importConfig())
 
