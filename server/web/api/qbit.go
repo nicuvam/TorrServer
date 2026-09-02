@@ -87,6 +87,26 @@ func qbitTest(c *gin.Context) {
 	c.JSON(200, gin.H{"success": true, "version": version})
 }
 
+// qbitCategories godoc
+//
+//	@Summary		Create mirrored qBittorrent categories
+//	@Description	Creates the movie, tv, music and other categories in qBittorrent using the saved connection settings.
+//
+//	@Tags			API
+//
+//	@Accept			json
+//	@Produce		json
+//	@Security		BasicAuth
+//	@Success		200
+//	@Router			/qbit/categories [post]
+func qbitCategories(c *gin.Context) {
+	if err := qbitsync.EnsureCategories(); err != nil {
+		c.JSON(200, gin.H{"success": false, "error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"success": true})
+}
+
 func qbitServeFile(c *gin.Context, tor *torr.Torrent, indexStr string) bool {
 	if tor == nil || tor.LocalPath != "" || !qbitsync.Enabled() {
 		return false

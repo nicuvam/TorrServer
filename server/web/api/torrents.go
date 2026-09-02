@@ -23,16 +23,16 @@ import (
 // Action: add, get, set, rem, list, drop
 type torrReqJS struct {
 	requestI
-	Link            string `json:"link,omitempty"`
-	Hash            string `json:"hash,omitempty"`
-	Title           string `json:"title,omitempty"`
-	Category        string `json:"category,omitempty"`
-	Poster          string `json:"poster,omitempty"`
-	Data            string `json:"data,omitempty"`
-	LocalPath       string `json:"local_path,omitempty"`
-	SaveToDB        bool   `json:"save_to_db,omitempty"`
-	QBitDelete      bool   `json:"qbit_delete,omitempty"`
-	QBitDeleteFiles bool   `json:"qbit_delete_files,omitempty"`
+	Link            string  `json:"link,omitempty"`
+	Hash            string  `json:"hash,omitempty"`
+	Title           string  `json:"title,omitempty"`
+	Category        string  `json:"category,omitempty"`
+	Poster          string  `json:"poster,omitempty"`
+	Data            string  `json:"data,omitempty"`
+	LocalPath       *string `json:"local_path,omitempty"`
+	SaveToDB        bool    `json:"save_to_db,omitempty"`
+	QBitDelete      bool    `json:"qbit_delete,omitempty"`
+	QBitDeleteFiles bool    `json:"qbit_delete_files,omitempty"`
 }
 
 // abortWithJSONError aborts the request with a JSON body. gin's
@@ -113,6 +113,11 @@ func addTorrent(req torrReqJS, c *gin.Context) {
 	log.TLogln("add torrent", req.Link)
 	req.Link = strings.ReplaceAll(req.Link, "&amp;", "&")
 
+	localPath := ""
+	if req.LocalPath != nil {
+		localPath = *req.LocalPath
+	}
+
 	var torrSpec *torrent.TorrentSpec
 	var torrsHash *torrshash.TorrsHash
 	var err error
@@ -142,10 +147,10 @@ func addTorrent(req torrReqJS, c *gin.Context) {
 		}
 	}
 
-	tor, err := torr.AddTorrent(torrSpec, req.Title, req.Poster, req.Data, req.Category, req.LocalPath)
+	tor, err := torr.AddTorrent(torrSpec, req.Title, req.Poster, req.Data, req.Category, localPath)
 	if err != nil {
 		log.TLogln("error add torrent:", err)
-		if req.LocalPath != "" {
+		if localPath != "" {
 			abortWithJSONError(c, http.StatusBadRequest, err)
 		} else {
 			abortWithJSONError(c, http.StatusInternalServerError, err)
@@ -153,7 +158,7 @@ func addTorrent(req torrReqJS, c *gin.Context) {
 		return
 	}
 
-	saveToDB := req.SaveToDB || req.LocalPath != ""
+	saveToDB := req.SaveToDB || localPath != ""
 
 	go func() {
 		if !tor.GotInfo() {
@@ -196,7 +201,20 @@ func setTorrent(req torrReqJS, c *gin.Context) {
 		abortWithJSONError(c, http.StatusBadRequest, errors.New("hash is empty"))
 		return
 	}
-	torr.SetTorrent(req.Hash, req.Title, req.Poster, req.Category, req.Data)
+	if req.LocalPath != nil {
+		if err := torr.SetLocalPath(req.Hash, *req.LocalPath); err != nil {
+			abortWithJSONError(c, http.StatusBadRequest, err)
+			return
+		}
+		if *req.LocalPath == "" {
+			qbitsync.Forget(req.Hash)
+		} else {
+			qbitsync.Unforget(req.Hash)
+		}
+	}
+	if req.LocalPath == nil || req.Title != "" || req.Poster != "" || req.Category != "" || req.Data != "" {
+		torr.SetTorrent(req.Hash, req.Title, req.Poster, req.Category, req.Data)
+	}
 	c.Status(200)
 }
 
@@ -205,9 +223,11 @@ func remTorrent(req torrReqJS, c *gin.Context) {
 		abortWithJSONError(c, http.StatusBadRequest, errors.New("hash is empty"))
 		return
 	}
+	var qbitErr error
 	if req.QBitDelete || req.QBitDeleteFiles {
 		if err := qbitsync.DeleteInQBit(req.Hash, req.QBitDeleteFiles); err != nil {
 			log.TLogln("error delete torrent in qbittorrent:", err)
+			qbitErr = err
 		}
 	}
 	qbitsync.Forget(req.Hash)
@@ -217,6 +237,10 @@ func remTorrent(req torrReqJS, c *gin.Context) {
 	if set.BTsets.EnableDLNA {
 		dlna.Stop()
 		dlna.Start()
+	}
+	if qbitErr != nil {
+		c.JSON(200, gin.H{"qbit_error": qbitErr.Error()})
+		return
 	}
 	c.Status(200)
 }
