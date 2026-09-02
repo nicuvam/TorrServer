@@ -97,7 +97,13 @@ func Resolve(info *metainfo.Info, root string) (*Layout, error) {
 
 	var attempts []AttemptError
 	if info.IsDir() {
-		for _, base := range []string{root, filepath.Join(root, info.BestName())} {
+		bases := []string{root}
+		if named, err := safeJoin(root, []string{info.BestName()}); err == nil {
+			bases = append(bases, named)
+		} else {
+			attempts = append(attempts, AttemptError{Base: root, Err: err})
+		}
+		for _, base := range bases {
 			layout, err := buildDirLayout(info, base)
 			if err == nil {
 				return layout, nil

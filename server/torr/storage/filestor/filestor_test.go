@@ -271,6 +271,33 @@ func TestResolveRejectsPathEscape(t *testing.T) {
 	}
 }
 
+func TestResolveRejectsEscapingTorrentName(t *testing.T) {
+	outside := t.TempDir()
+	root := filepath.Join(outside, "downloads")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "secret.bin"), []byte("secret data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"..", "../..", "sub/..", string(filepath.Separator) + "etc"} {
+		info := withPieces(&metainfo.Info{
+			Name:        name,
+			PieceLength: 4,
+			Files:       []metainfo.FileInfo{{Path: []string{"secret.bin"}, Length: 11}},
+		})
+		layout, err := Resolve(info, root)
+		if err == nil {
+			t.Fatalf("name %q resolved outside root: %+v", name, layout)
+		}
+		var escape *PathEscapeError
+		if !errors.As(err, &escape) {
+			t.Fatalf("name %q: got %v, want PathEscapeError", name, err)
+		}
+	}
+}
+
 func TestTruncatedFileReturnsUnexpectedEOF(t *testing.T) {
 	tor, info, _, root := coreTorrent(t)
 
