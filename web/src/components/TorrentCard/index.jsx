@@ -25,10 +25,12 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  FormHelperText,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
+  Snackbar,
   Tooltip,
   useMediaQuery,
   useTheme,
@@ -40,6 +42,7 @@ import AddDialog from 'components/Add/AddDialog'
 import { StyledDialog } from 'style/CustomMaterialUiStyles'
 import useOnStandaloneAppOutsideClick from 'utils/useOnStandaloneAppOutsideClick'
 import { useBooleanPlayerPreference } from 'utils/PlayerPreferences'
+import { isQBitEnabled } from 'utils/qbitStatus'
 import { GETTING_INFO, IN_DB, CLOSED, PRELOAD, WORKING } from 'torrentStates'
 import { TORRENT_CATEGORIES } from 'components/categories'
 import VideoPlayer from 'components/VideoPlayer'
@@ -163,6 +166,7 @@ const sameFileList = (left, right) => {
 }
 
 const posterLookupDone = new Set()
+const posterLookupInFlight = new Set()
 
 const Torrent = ({ torrent }) => {
   const { t } = useTranslation()
@@ -229,21 +233,39 @@ const Torrent = ({ torrent }) => {
   const [isQbitDownloadPending, setIsQbitDownloadPending] = useState(false)
   const [qbitDeleteChecked, setQbitDeleteChecked] = useState(false)
   const [qbitDeleteFilesChecked, setQbitDeleteFilesChecked] = useState(false)
+  const [qbitPushError, setQbitPushError] = useState('')
+  const [qbitMessage, setQbitMessage] = useState('')
+  const [isQbitIntegrationEnabled, setIsQbitIntegrationEnabled] = useState(false)
   const showQbitDeleteOptions = Boolean(qbitState) || Boolean(localPath)
+
+  useEffect(() => {
+    isQBitEnabled().then(enabled => {
+      if (isMounted.current) setIsQbitIntegrationEnabled(enabled)
+    })
+  }, [])
 
   useEffect(() => {
     const lookupKey = `${hash}:${timestamp}`
     const isRecent = Number.isFinite(timestamp) && Date.now() / 1000 - timestamp < 900
-    if (poster || !qbitState || !isRecent || posterLookupDone.has(lookupKey)) return
+    if (poster || !qbitState || !isRecent || posterLookupDone.has(lookupKey) || posterLookupInFlight.has(lookupKey))
+      return
     const query = shortenTitleForPosterSearch(title || name)
     if (!query) return
-    posterLookupDone.add(lookupKey)
+    posterLookupInFlight.add(lookupKey)
     const language = currentLang === 'ru' ? 'ru' : 'en'
     getMoviePosters(query, language)
       .then(async urls => {
-        if (!urls?.[0]) return
+        if (!urls) return
+        if (!urls.length) {
+          posterLookupDone.add(lookupKey)
+          return
+        }
         const { data: fresh } = await axios.post(torrentsHost(), { action: 'get', hash })
-        if (!fresh?.hash || fresh.poster) return
+        if (!fresh?.hash) return
+        if (fresh.poster) {
+          posterLookupDone.add(lookupKey)
+          return
+        }
         await axios.post(torrentsHost(), {
           action: 'set',
           hash,
@@ -252,8 +274,11 @@ const Torrent = ({ torrent }) => {
           category: fresh.category,
           data: fresh.data,
         })
+        posterLookupDone.add(lookupKey)
       })
-      .catch(() => {})
+      // eslint-disable-next-line no-console
+      .catch(error => console.warn(`Poster lookup failed for ${query} (${hash})`, error))
+      .finally(() => posterLookupInFlight.delete(lookupKey))
   }, [poster, qbitState, hash, timestamp, title, name, currentLang])
 
   const qbitProgressLabel = () => {
@@ -270,18 +295,27 @@ const Torrent = ({ torrent }) => {
     setIsQbitDownloadPending(true)
     try {
       await axios.post(torrentsHost(), { action: 'download', hash })
+      if (isMounted.current) setQbitPushError('')
+    } catch (error) {
+      const message = error?.response?.data?.error || error.message
+      if (isMounted.current) {
+        setQbitPushError(message)
+        setQbitMessage(`${t('QBit.DownloadFailed')}: ${message}`)
+      }
     } finally {
       if (isMounted.current) setIsQbitDownloadPending(false)
     }
   }
 
   const dropTorrent = () => axios.post(torrentsHost(), { action: 'drop', hash })
-  const deleteTorrent = () =>
-    axios.post(torrentsHost(), {
+  const deleteTorrent = async () => {
+    const { data } = await axios.post(torrentsHost(), {
       action: 'rem',
       hash,
       ...(showQbitDeleteOptions && { qbit_delete: qbitDeleteChecked, qbit_delete_files: qbitDeleteFilesChecked }),
     })
+    if (data?.qbit_error && isMounted.current) setQbitMessage(`${t('QBit.DeleteFailed')}: ${data.qbit_error}`)
+  }
 
   const getParsedTitle = () => {
     const parse = key => ptt.parse(title || '')?.[key] || ptt.parse(name || '')?.[key]
@@ -458,6 +492,19 @@ const Torrent = ({ torrent }) => {
     }
   }
 
+  const qbitDownloadButton = (
+    <StyledButton onClick={startQbitDownload} disabled={isQbitDownloadPending}>
+      {isQbitDownloadPending ? (
+        <CircularProgress size={20} color='inherit' />
+      ) : qbitPushError ? (
+        <WarningIcon />
+      ) : (
+        <GetAppIcon />
+      )}
+      <span>{t('QBit.Download')}</span>
+    </StyledButton>
+  )
+
   return (
     <>
       <TorrentCard>
@@ -602,7 +649,7 @@ const Torrent = ({ torrent }) => {
                 <Chip size='small' label={t('QBit.Local')} />
               </QBitLocalBadge>
             </Tooltip>
-          ) : qbitState ? (
+          ) : !isQbitIntegrationEnabled ? null : qbitState ? (
             qbitError ? (
               <Tooltip title={qbitError}>
                 <QBitProgressButton hasError onClick={startQbitDownload} disabled={isQbitDownloadPending}>
@@ -616,11 +663,10 @@ const Torrent = ({ torrent }) => {
                 <span>{qbitProgressLabel()}</span>
               </QBitProgressButton>
             )
+          ) : qbitPushError ? (
+            <Tooltip title={qbitPushError}>{qbitDownloadButton}</Tooltip>
           ) : (
-            <StyledButton onClick={startQbitDownload} disabled={isQbitDownloadPending}>
-              {isQbitDownloadPending ? <CircularProgress size={20} color='inherit' /> : <GetAppIcon />}
-              <span>{t('QBit.Download')}</span>
-            </StyledButton>
+            qbitDownloadButton
           )}
 
           <StyledButton onClick={() => dropTorrent(torrent)}>
@@ -686,7 +732,10 @@ const Torrent = ({ torrent }) => {
               control={
                 <Checkbox
                   checked={qbitDeleteChecked}
-                  onChange={e => setQbitDeleteChecked(e.target.checked)}
+                  onChange={e => {
+                    setQbitDeleteChecked(e.target.checked)
+                    if (!e.target.checked) setQbitDeleteFilesChecked(false)
+                  }}
                   color='secondary'
                 />
               }
@@ -696,12 +745,14 @@ const Torrent = ({ torrent }) => {
               control={
                 <Checkbox
                   checked={qbitDeleteFilesChecked}
+                  disabled={!qbitDeleteChecked}
                   onChange={e => setQbitDeleteFilesChecked(e.target.checked)}
                   color='secondary'
                 />
               }
               label={t('QBit.DeleteFiles')}
             />
+            <FormHelperText margin='none'>{t('QBit.DeleteFilesHint')}</FormHelperText>
           </DialogContent>
         )}
         <DialogActions>
@@ -722,6 +773,13 @@ const Torrent = ({ torrent }) => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Snackbar
+        open={!!qbitMessage}
+        autoHideDuration={4000}
+        onClose={(event, reason) => reason !== 'clickaway' && setQbitMessage('')}
+        message={qbitMessage}
+      />
 
       {isEditDialogOpen && (
         <AddDialog

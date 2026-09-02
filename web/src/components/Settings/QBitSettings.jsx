@@ -17,7 +17,7 @@ import {
 } from '@material-ui/core'
 import DeleteIcon from '@material-ui/icons/Delete'
 import axios from 'axios'
-import { qbitTestHost } from 'utils/Hosts'
+import { qbitCategoriesHost, qbitTestHost } from 'utils/Hosts'
 
 import { SecondarySettingsContent, SettingSectionLabel } from './style'
 
@@ -41,6 +41,7 @@ export default function QBitSettings({ settings, updateSettings }) {
   const [newFrom, setNewFrom] = useState('')
   const [newTo, setNewTo] = useState('')
   const [testing, setTesting] = useState(false)
+  const [creatingCategories, setCreatingCategories] = useState(false)
   const [testResult, setTestResult] = useState(null)
 
   const handleChange = (field, value) => {
@@ -89,6 +90,22 @@ export default function QBitSettings({ settings, updateSettings }) {
       setTestResult({ success: false, msg: e.message })
     }
     setTesting(false)
+  }
+
+  const handleCreateCategories = async () => {
+    setCreatingCategories(true)
+    setTestResult(null)
+    try {
+      const { data } = await axios.post(qbitCategoriesHost())
+      if (data.success) {
+        setTestResult({ success: true, msg: t('QBit.CategoriesCreated') })
+      } else {
+        setTestResult({ success: false, msg: data.error })
+      }
+    } catch (e) {
+      setTestResult({ success: false, msg: e.message })
+    }
+    setCreatingCategories(false)
   }
 
   return (
@@ -146,7 +163,19 @@ export default function QBitSettings({ settings, updateSettings }) {
           >
             {testing ? <CircularProgress size={24} color='inherit' /> : t('QBit.Test')}
           </Button>
+          <Button
+            variant='outlined'
+            color='secondary'
+            onClick={handleCreateCategories}
+            disabled={!URL || creatingCategories}
+            style={{ flex: '1 1 auto', minWidth: 100 }}
+          >
+            {creatingCategories ? <CircularProgress size={24} color='inherit' /> : t('QBit.CreateCategories')}
+          </Button>
         </div>
+        <FormHelperText margin='none' style={{ marginBottom: '10px' }}>
+          {t('QBit.TestHint')}
+        </FormHelperText>
         {testResult && (
           <Typography variant='caption' style={{ color: testResult.success ? 'green' : 'red' }}>
             {testResult.msg}

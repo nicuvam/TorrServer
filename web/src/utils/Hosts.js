@@ -17,6 +17,7 @@ export const torznabTestHost = () => `${torrserverHost}/torznab/test`
 export const tmdbSettingsHost = () => `${torrserverHost}/tmdb/settings`
 export const gstSettingsHost = () => `${torrserverHost}/gst/settings`
 export const qbitTestHost = () => `${torrserverHost}/qbit/test`
+export const qbitCategoriesHost = () => `${torrserverHost}/qbit/categories`
 
 export const getTorrServerHost = () => torrserverHost
 export const setTorrServerHost = host => {

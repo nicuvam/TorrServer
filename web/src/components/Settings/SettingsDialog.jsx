@@ -6,6 +6,7 @@ import { settingsHost, gstSettingsHost } from 'utils/Hosts'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clearTMDBCache } from 'components/Add/helpers'
+import { clearQBitStatusCache } from 'utils/qbitStatus'
 import AppBar from '@material-ui/core/AppBar'
 import SwipeableViews from 'react-swipeable-views'
 import CircularProgress from '@material-ui/core/CircularProgress'
@@ -76,6 +77,7 @@ export default function SettingsDialog({ handleClose }) {
     axios.post(settingsHost(), { action: 'set', sets })
     // Clear TMDB cache so fresh settings are fetched on next poster search
     clearTMDBCache()
+    clearQBitStatusCache()
     localStorage.setItem('isVlcUsed', isVlcUsed)
     localStorage.setItem('showQuickVlcButton', showQuickVlcButton)
     localStorage.setItem('isInfuseUsed', isInfuseUsed)
